@@ -12,18 +12,18 @@ public class LeverScript : MonoBehaviour
     void Start()
     {
         LeverState = false;
-        transform.position = ClosedPosition;    
+        transform.rotation = Quaternion.Euler(ClosedPosition);    
     }
 
-    void ActivateLever()
+    public void ActivateLever()
     {
         LeverState = true;
-        transform.position = OpenPosition;
+        transform.rotation = Quaternion.Euler(OpenPosition);
     }
 
-    void DeactivateLever()
+    public void DeactivateLever()
     {
         LeverState = false;
-        transform.position = ClosedPosition;
+        transform.rotation = Quaternion.Euler(ClosedPosition);
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Events;
 
 public class InteractLever : MonoBehaviour, IInteractable
 {
@@ -12,9 +13,9 @@ public class InteractLever : MonoBehaviour, IInteractable
     
     public bool SecondLeverActivated { get; private set; } = false;
 
-    public event Action OnWaitSecondLever;
-    public event Action OnActivateEvent;
-    public event Action OnDeactivateEvent;
+    public UnityEvent OnWaitSecondLever;
+    public UnityEvent OnActivateEvent;
+    public UnityEvent OnDeactivateEvent;
 
     private bool lastSecondLeverState = false;
 
