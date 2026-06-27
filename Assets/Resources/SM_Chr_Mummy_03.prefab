@@ -231,6 +231,13 @@ MonoBehaviour:
   vaultMaxDistance: 1.5
   vaultDuration: 0.6
   vaultPeakOffset: 0.5
+  throwablePrefabName: ThrowableRock
+  throwForce: 15
+  trajectoryResolution: 30
+  trajectoryStepTime: 0.05
+  throwAnimDuration: 0.3
+  cameraAimBlendSpeed: 8
+  deathYThreshold: -15
 --- !u!114 &4464849369396515681
 MonoBehaviour:
   m_ObjectHideFlags: 0
