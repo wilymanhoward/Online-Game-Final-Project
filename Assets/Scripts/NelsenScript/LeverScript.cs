@@ -2,18 +2,28 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class DoorScript : MonoBehaviour
+public class LeverScript : MonoBehaviour
 {
     [SerializeField] private Vector3 ClosedPosition;
     [SerializeField] private Vector3 OpenPosition;
 
+    private bool LeverState = false;
+
     void Start()
     {
+        LeverState = false;
         transform.position = ClosedPosition;    
     }
 
-    void Update()
+    void ActivateLever()
     {
-        
+        LeverState = true;
+        transform.position = OpenPosition;
+    }
+
+    void DeactivateLever()
+    {
+        LeverState = false;
+        transform.position = ClosedPosition;
     }
 }
