@@ -1,0 +1,21 @@
+# File produced by Tripo
+
+newmtl tripo_mat_30c9c2ef
+Kd 0.80000001 0.80000001 0.80000001
+Ka 0.00000000 0.00000000 0.00000000
+Ks 0.80000001 0.80000001 0.80000001
+Ke 0.00000000 0.00000000 0.00000000
+Tf 0.00000000 0.00000000 0.00000000
+d 1.00000000
+Ns 25.00000000
+illum 2
+map_Kd antique+key+3d+model_basecolor.jpg
+map_Kn antique+key+3d+model_normal.jpg
+norm antique+key+3d+model_normal.jpg
+map_Bump -bm 1.000000 antique+key+3d+model_normal.jpg
+bump -bm 1.000000 antique+key+3d+model_normal.jpg
+map_Ns antique+key+3d+model_roughness.jpg
+map_Pr antique+key+3d+model_roughness.jpg
+map_refl antique+key+3d+model_metallic.jpg
+map_Pm antique+key+3d+model_metallic.jpg
+
