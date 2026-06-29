@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
+using Photon.Pun;
 
 public class InteractLever : MonoBehaviour, IInteractable
 {
@@ -36,7 +37,28 @@ public class InteractLever : MonoBehaviour, IInteractable
 
 #region Interface functions
 
-    public void Interact(){     
+    public void Interact()
+    {
+        if (PhotonNetwork.IsConnected)
+        {
+            PhotonView pv = GetComponent<PhotonView>();
+            if (pv != null)
+            {
+                pv.RPC("InteractRPC", RpcTarget.All);
+                return;
+            }
+        }
+        InteractLocal();
+    }
+
+    [PunRPC]
+    private void InteractRPC()
+    {
+        InteractLocal();
+    }
+
+    private void InteractLocal()
+    {     
         if (!MultiplePeopleRequired)
         {
             if (LeverActivated)

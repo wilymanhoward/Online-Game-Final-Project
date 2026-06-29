@@ -108,6 +108,137 @@ public class FirstPersonController : MonoBehaviourPun
     private float vaultExitBlend = 0f;
     private float vaultExitDuration = 0.25f;
 
+    [Header("Input System")]
+    [SerializeField] private InputReader inputReader;
+
+    private Vector2 moveInput;
+    private Vector2 lookInput;
+    private bool sprintInputPressed;
+    private bool jumpInputPressed;
+    private bool aimInputPressed;
+    private bool throwInputPressed;
+    private bool inputsDisabled = false;
+
+    public void SetInputsDisabled(bool disabled)
+    {
+        inputsDisabled = disabled;
+        if (disabled)
+        {
+            moveInput = Vector2.zero;
+            lookInput = Vector2.zero;
+            sprintInputPressed = false;
+            jumpInputPressed = false;
+            aimInputPressed = false;
+            throwInputPressed = false;
+        }
+    }
+
+    private void OnEnable()
+    {
+#if UNITY_EDITOR
+        if (inputReader == null)
+        {
+            string[] guids = UnityEditor.AssetDatabase.FindAssets("t:InputReader");
+            if (guids != null && guids.Length > 0)
+            {
+                string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
+                inputReader = UnityEditor.AssetDatabase.LoadAssetAtPath<InputReader>(path);
+            }
+        }
+#endif
+        if (inputReader == null)
+        {
+            InputReader[] readers = Resources.FindObjectsOfTypeAll<InputReader>();
+            if (readers != null && readers.Length > 0)
+            {
+                inputReader = readers[0];
+            }
+        }
+
+        if (inputReader != null)
+        {
+            inputReader.OnWalk += HandleWalk;
+            inputReader.OnLook += HandleLook;
+            inputReader.OnJump += HandleJump;
+            inputReader.OnSprint += HandleSprint;
+            inputReader.OnSprintCanceled += HandleSprintCanceled;
+            inputReader.OnAim += HandleAim;
+            inputReader.OnAimCanceled += HandleAimCanceled;
+            inputReader.OnThrow += HandleThrow;
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (inputReader != null)
+        {
+            inputReader.OnWalk -= HandleWalk;
+            inputReader.OnLook -= HandleLook;
+            inputReader.OnJump -= HandleJump;
+            inputReader.OnSprint -= HandleSprint;
+            inputReader.OnSprintCanceled -= HandleSprintCanceled;
+            inputReader.OnAim -= HandleAim;
+            inputReader.OnAimCanceled -= HandleAimCanceled;
+            inputReader.OnThrow -= HandleThrow;
+        }
+    }
+
+    private void HandleWalk(Vector2 value)
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (inputsDisabled) return;
+        moveInput = value;
+    }
+
+    private void HandleLook(Vector2 value)
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (inputsDisabled) return;
+        lookInput = value;
+    }
+
+    private void HandleJump()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (inputsDisabled) return;
+        jumpInputPressed = true;
+    }
+
+    private void HandleSprint()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (inputsDisabled) return;
+        sprintInputPressed = true;
+    }
+
+    private void HandleSprintCanceled()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (inputsDisabled) return;
+        sprintInputPressed = false;
+    }
+
+    private void HandleAim()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (inputsDisabled) return;
+        aimInputPressed = true;
+    }
+
+    private void HandleAimCanceled()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (inputsDisabled) return;
+        aimInputPressed = false;
+    }
+
+    private void HandleThrow()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (inputsDisabled) return;
+        throwInputPressed = true;
+    }
+
     void Start()
     {
         controller = GetComponent<CharacterController>();
@@ -230,8 +361,9 @@ public class FirstPersonController : MonoBehaviourPun
 
         if (isDead)
         {
-            if (Input.GetMouseButtonDown(0))
+            if (throwInputPressed)
             {
+                throwInputPressed = false; // Consume click
                 clickCountToRespawn++;
                 TriggerCameraShake(0.12f, 0.15f); // slight shake feedback on click
                 UpdateDeathUI();
@@ -256,12 +388,18 @@ public class FirstPersonController : MonoBehaviourPun
                 }
                 playerCamera.transform.rotation = Quaternion.Euler(pitch, transform.eulerAngles.y, 0f);
             }
+            
+            // Clear unconsumed inputs
+            jumpInputPressed = false;
+            throwInputPressed = false;
+            lookInput = Vector2.zero;
             return;
         }
 
         // 1. Camera Look Rotation
-        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
-        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+        // Scale delta input by 0.05f to match legacy mouse sensitivity feel
+        float mouseX = lookInput.x * mouseSensitivity * 0.05f;
+        float mouseY = lookInput.y * mouseSensitivity * 0.05f;
 
         // Rotate player body horizontally via mouse look
         transform.Rotate(Vector3.up * mouseX);
@@ -317,15 +455,20 @@ public class FirstPersonController : MonoBehaviourPun
                 animator.SetBool("IsGrounded", false);
                 animator.SetBool("OnGround", false);
             }
+            
+            // Clear unconsumed inputs
+            jumpInputPressed = false;
+            throwInputPressed = false;
+            lookInput = Vector2.zero;
             return;
         }
 
         // 2. Player Movement
-        float moveHorizontal = Input.GetAxisRaw("Horizontal"); // Changed from GetAxis to GetAxisRaw for instant stopping response
-        float moveVertical = Input.GetAxisRaw("Vertical");     // Changed from GetAxis to GetAxisRaw for instant stopping response
+        float moveHorizontal = moveInput.x;
+        float moveVertical = moveInput.y;
 
         // Determine if running (holding Shift and moving forward)
-        bool isRunning = (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && (Input.GetKey(KeyCode.W) || moveVertical > 0.1f);
+        bool isRunning = sprintInputPressed && (moveVertical > 0.1f);
         float currentSpeed = isRunning ? runSpeed : moveSpeed;
 
         Vector3 inputDir = transform.right * moveHorizontal + transform.forward * moveVertical;
@@ -340,8 +483,9 @@ public class FirstPersonController : MonoBehaviourPun
                 verticalVelocity = -2f; 
             }
 
-            if (Input.GetButtonDown("Jump"))
+            if (jumpInputPressed)
             {
+                jumpInputPressed = false; // Consume jump
                 float obstacleHeight;
                 if (CheckVault(out vaultStartPos, out vaultTargetPos, out obstacleHeight))
                 {
@@ -387,6 +531,11 @@ public class FirstPersonController : MonoBehaviourPun
         }
 
         UpdateAimingAndTrajectory();
+
+        // Clear triggers and reset mouse look delta at the end of the frame
+        jumpInputPressed = false;
+        throwInputPressed = false;
+        lookInput = Vector2.zero;
     }
 
     void LateUpdate()
@@ -770,7 +919,7 @@ public class FirstPersonController : MonoBehaviourPun
     private void UpdateAimingAndTrajectory()
     {
         // Aiming Logic (Hold Right-Click) - only active if not currently throwing
-        if (Input.GetMouseButton(1) && !isThrowingAnim && (!PhotonNetwork.IsConnected || photonView.IsMine))
+        if (aimInputPressed && !isThrowingAnim && (!PhotonNetwork.IsConnected || photonView.IsMine))
         {
             isAiming = true;
             if (trajectoryLine != null) trajectoryLine.enabled = true;
@@ -850,8 +999,9 @@ public class FirstPersonController : MonoBehaviourPun
             }
 
             // Throw Logic (Left-Click while aiming)
-            if (Input.GetMouseButtonDown(0))
+            if (throwInputPressed)
             {
+                throwInputPressed = false; // Consume throw
                 ThrowObject(throwOrigin, throwVelocity);
             }
         }

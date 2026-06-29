@@ -14,15 +14,20 @@ public class InputReader : ScriptableObject, PlayerInput.IMovementActions, Playe
     public event Action OnSprint;
     public event Action OnSprintCanceled;
     public event Action OnInteract;
+    public event Action OnAim;
+    public event Action OnAimCanceled;
+    public event Action OnThrow;
+    public event Action OnThrowCanceled;
 
     private void OnEnable()
     {
-        if (playerInput == null)
+        if (playerInput != null)
         {
-            playerInput = new PlayerInput();
-            playerInput.Movement.SetCallbacks(this);
-            playerInput.Interact.SetCallbacks(this);
+            playerInput.Disable();
         }
+        playerInput = new PlayerInput();
+        playerInput.Movement.SetCallbacks(this);
+        playerInput.Interact.SetCallbacks(this);
         playerInput.Enable();
     }
 
@@ -73,6 +78,30 @@ public class InputReader : ScriptableObject, PlayerInput.IMovementActions, Playe
         if (context.phase == InputActionPhase.Performed)
         {
             OnInteract?.Invoke();
+        }
+    }
+
+    void PlayerInput.IInteractActions.OnAim(InputAction.CallbackContext context)
+    {
+        if (context.phase == InputActionPhase.Performed)
+        {
+            OnAim?.Invoke();
+        }
+        else if (context.phase == InputActionPhase.Canceled)
+        {
+            OnAimCanceled?.Invoke();
+        }
+    }
+
+    void PlayerInput.IInteractActions.OnThrow(InputAction.CallbackContext context)
+    {
+        if (context.phase == InputActionPhase.Performed)
+        {
+            OnThrow?.Invoke();
+        }
+        else if (context.phase == InputActionPhase.Canceled)
+        {
+            OnThrowCanceled?.Invoke();
         }
     }
 }

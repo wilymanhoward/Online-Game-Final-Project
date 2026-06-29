@@ -12,16 +12,38 @@ public class PlayerInteract : MonoBehaviour
     private Ray ray;
     private RaycastHit hit;
     
+    private FirstPersonController playerController;
     private bool WaitingForTeam = false;
     private Camera mainCamera;
 
     private void Start()
     {
         mainCamera = Camera.main;
+        playerController = GetComponent<FirstPersonController>();
     }
 
     private void OnEnable()
     {
+#if UNITY_EDITOR
+        if (inputReader == null)
+        {
+            string[] guids = UnityEditor.AssetDatabase.FindAssets("t:InputReader");
+            if (guids != null && guids.Length > 0)
+            {
+                string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
+                inputReader = UnityEditor.AssetDatabase.LoadAssetAtPath<InputReader>(path);
+            }
+        }
+#endif
+        if (inputReader == null)
+        {
+            InputReader[] readers = Resources.FindObjectsOfTypeAll<InputReader>();
+            if (readers != null && readers.Length > 0)
+            {
+                inputReader = readers[0];
+            }
+        }
+
         if (inputReader != null)
         {
             inputReader.OnInteract += TryInteract;
@@ -59,10 +81,17 @@ public class PlayerInteract : MonoBehaviour
         {
             if (hit.collider.TryGetComponent<IInteractable>(out IInteractable interactable))
             {
+                // If it is an InteractLever and someone is already waiting on it, block interaction
+                if (interactable is InteractLever lever && lever.WaitingForTeam && !WaitingForTeam)
+                {
+                    Debug.Log("Lever is already occupied by another player.");
+                    return;
+                }
+
                 currentInteractable = interactable;
                 currentInteractable.Interact();
                 
-                if (interactable is InteractLever lever && lever.WaitingForTeam)
+                if (interactable is InteractLever activeLever && activeLever.WaitingForTeam)
                 {
                     WaitForTeam();
                 }
@@ -74,6 +103,10 @@ public class PlayerInteract : MonoBehaviour
         WaitingForTeam = true;
         Debug.Log("WaitingForTeam");
         //Disable movement and look
+        if (playerController != null)
+        {
+            playerController.SetInputsDisabled(true);
+        }
 
         if (currentInteractable is InteractLever lever)
         {
@@ -85,6 +118,11 @@ public class PlayerInteract : MonoBehaviour
     private void ExitWaitForTeam(){
         WaitingForTeam = false;
         
+        if (playerController != null)
+        {
+            playerController.SetInputsDisabled(false);
+        }
+
         if (currentInteractable is InteractLever lever)
         {
             lever.OnActivateEvent.RemoveListener(ExitWaitForTeam);
