@@ -56,9 +56,14 @@ public class GiantPharaohAI : MonoBehaviour
     private FirstPersonController currentAttackTarget;
     private float smoothKneeTuckedY = 195f;
     private System.Collections.Generic.List<Transform> rightFingers = new System.Collections.Generic.List<Transform>();
+    private Vector3 spawnPosition;
+    private Quaternion spawnRotation;
 
     void Start()
     {
+        spawnPosition = transform.position;
+        spawnRotation = transform.rotation;
+
         controller = GetComponent<CharacterController>();
         animator = GetComponent<Animator>();
 
@@ -648,6 +653,36 @@ public class GiantPharaohAI : MonoBehaviour
         shape.shapeType = ParticleSystemShapeType.Circle;
         shape.radius = 2f;
         shape.rotation = new Vector3(90f, 0f, 0f); // Face flat on ground
+    }
+
+    public void ResetToSpawn()
+    {
+        if (controller != null)
+        {
+            controller.enabled = false;
+        }
+
+        transform.position = spawnPosition;
+        transform.rotation = spawnRotation;
+
+        if (controller != null)
+        {
+            controller.enabled = true;
+        }
+
+        // Reset AI state so he doesn't keep attacking or stomping instantly
+        currentState = AIState.Chasing;
+        cooldownTimer = 1.0f; // brief delay before chasing again
+        currentAttackTarget = null;
+        isStomping = false;
+        stompProgress = 0f;
+
+        // Reset animations
+        if (animator != null)
+        {
+            animator.SetFloat("Speed", 0f);
+            animator.Play("Idle", 0, 0f);
+        }
     }
 
     public bool IsStompingActive()

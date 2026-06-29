@@ -1020,6 +1020,13 @@ public class FirstPersonController : MonoBehaviourPun
             isDead = true;
             clickCountToRespawn = 0;
             
+            // Reset the giant to spawn position!
+            var giant = FindObjectOfType<GiantPharaohAI>();
+            if (giant != null)
+            {
+                giant.ResetToSpawn();
+            }
+
             // Ensure UI exists and is shown
             if (deathOverlayObj == null)
             {
