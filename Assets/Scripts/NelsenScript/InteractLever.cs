@@ -6,55 +6,84 @@ using UnityEngine.Events;
 
 public class InteractLever : MonoBehaviour, IInteractable
 {
-    private bool LeverActivated = false;
+    [SerializeField] private bool multiplePeopleRequired = true;
+    public bool MultiplePeopleRequired
+    {
+        get => multiplePeopleRequired;
+        set => multiplePeopleRequired = value;
+    }
 
-    [SerializeField] private bool CheckLever = false;
+    public bool CloseOverTime = false;
+    [SerializeField] private float closeDelay = 3f;
+
+    [Header("Lever Settings")]
+    public bool WaitingForTeam = false;
+    public bool LeverActivated = false;
+
+    private Coroutine closeCoroutine;
+
+    [Header("Lever References")]
     [SerializeField] private InteractLever SecondLever;
     
-    public bool SecondLeverActivated { get; private set; } = false;
-
-    public UnityEvent OnWaitSecondLever;
+    public UnityEvent OnCloseOvertimeEvent;
     public UnityEvent OnActivateEvent;
     public UnityEvent OnDeactivateEvent;
 
-    private bool lastSecondLeverState = false;
-
-#region Monobehaviour
-    
     private void Start()
     {   
         Deactivate();
     }
 
-    private void Update()
-    {
-        if (!CheckLever) return;
-
-        WaitSecondLever();
-    }
-    
-#endregion
-
 #region Interface functions
 
-    public void Interact(){
-        CheckLever = true;
+    public void Interact(){     
+        if (!MultiplePeopleRequired)
+        {
+            if (LeverActivated)
+            {
+                Deactivate();
+            }
+            else
+            {
+                Activate();
+            }
+            return;
+        }
+        
+        if (WaitingForTeam)
+        {
+            WaitingForTeam = false;
+        }
+        else
+        {
+            WaitingForTeam = true;
+        }
+
+        if (SecondLever != null && WaitingForTeam && SecondLever.WaitingForTeam)
+        {
+            WaitingForTeam = false;
+            SecondLever.WaitingForTeam = false;
+            Activate();
+            SecondLever.Activate();
+        }
     }
 
-     public void Activate()
+    public void Activate()
     {
         LeverActivated = true;
-        SecondLeverActivated = true; // Updates state so the other lever can read it
         OnActivate();
-        CheckLever = false;
+        OnCloseOverTime();
     }
 
     public void Deactivate()
     {
         LeverActivated = false;
-        SecondLeverActivated = false; // Updates state so the other lever can read it
+        if (closeCoroutine != null)
+        {
+            StopCoroutine(closeCoroutine);
+            closeCoroutine = null;
+        }
         OnDeactivate();
-        CheckLever = false;
     }
 
     public void OnActivate()
@@ -71,35 +100,22 @@ public class InteractLever : MonoBehaviour, IInteractable
 
 #endregion
 
-#region Logic functions
-
-    private void WaitSecondLever()
+    private void OnCloseOverTime()
     {
-        bool secondLeverActive = ListenToSecondLever();
-
-        if (secondLeverActive && !lastSecondLeverState)
+        if (LeverActivated && CloseOverTime)
         {
-            if (LeverActivated)
+            if (closeCoroutine != null)
             {
-                Deactivate();
+                StopCoroutine(closeCoroutine);
             }
-            else
-            {
-                Activate();
-            }
-            
-            OnWaitSecondLever?.Invoke();
+            closeCoroutine = StartCoroutine(CloseAfterDelay(closeDelay));
         }
-
-        lastSecondLeverState = secondLeverActive;
     }
 
-    private bool ListenToSecondLever()
+    private IEnumerator CloseAfterDelay(float delay)
     {
-        if (SecondLever == null) return false;
-        return SecondLever.SecondLeverActivated;
+        yield return new WaitForSeconds(delay);
+        Deactivate();
+        OnCloseOvertimeEvent?.Invoke();
     }
-
-#endregion
-
 }
