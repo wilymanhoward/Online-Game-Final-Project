@@ -2,9 +2,10 @@ using UnityEngine;
 
 public interface IInteractable
 { 
-    void Interact();
-    void Activate();
-    void Deactivate();
-    void OnActivate();
-    void OnDeactivate();
+    public bool MultiplePeopleRequired {get;set;}
+    public void Interact();
+    public void Activate();
+    public void Deactivate();
+    public void OnActivate();
+    public void OnDeactivate();
 }
