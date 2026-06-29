@@ -2,33 +2,68 @@ using UnityEngine;
 using UnityEngine.UI;
 using Photon.Pun;
 using Photon.Realtime;
+using System.Collections.Generic;
 
 public class LobbyManager : MonoBehaviourPunCallbacks
 {
-    [Header("UI Status Text")]
-    private Text statusText;
-    private Button joinButton;
-    private GameObject lobbyPanel;
-    private GameObject waitingPanel;
-    private Text waitingText;
-    private GameObject startButton;
+    [Header("UI Panels")]
+    public GameObject lobbyPanel;
+    public GameObject waitingPanel;
+
+    [Header("Lobby Controls")]
+    public InputField nicknameInput;
+    public InputField roomNameInput;
+    public Button createRoomButton;
+    public Transform roomListContent;
+    public GameObject roomItemPrefab;
+    public Text statusText;
+
+    [Header("Waiting Room Controls")]
+    public Text waitingText;
+    public GameObject startButton;
+    public Button leaveRoomButton;
 
     private const string GAME_SCENE_NAME = "SampleScene";
+    private Dictionary<string, RoomInfo> cachedRoomList = new Dictionary<string, RoomInfo>();
 
     void Start()
     {
-        // Setup automatically sync scene
         PhotonNetwork.AutomaticallySyncScene = true;
 
-        // Build UI Dynamically to ensure it works without manual scene setups
-        CreateDynamicUI();
+        // Bind button listeners dynamically at runtime to ensure they are persistently registered
+        if (createRoomButton != null)
+        {
+            createRoomButton.onClick.RemoveAllListeners();
+            createRoomButton.onClick.AddListener(OnCreateRoomButtonClicked);
+        }
+        if (leaveRoomButton != null)
+        {
+            leaveRoomButton.onClick.RemoveAllListeners();
+            leaveRoomButton.onClick.AddListener(OnLeaveRoomButtonClicked);
+        }
+        if (startButton != null)
+        {
+            Button startBtn = startButton.GetComponent<Button>();
+            if (startBtn != null)
+            {
+                startBtn.onClick.RemoveAllListeners();
+                startBtn.onClick.AddListener(OnStartButtonClicked);
+            }
+        }
 
-        statusText.text = "Connecting to Photon Network...";
-        joinButton.interactable = false;
-        lobbyPanel.SetActive(true);
-        waitingPanel.SetActive(false);
+        if (statusText != null) statusText.text = "Connecting to Photon Network...";
+        if (createRoomButton != null) createRoomButton.interactable = false;
+        
+        if (lobbyPanel != null) lobbyPanel.SetActive(true);
+        if (waitingPanel != null) waitingPanel.SetActive(false);
 
-        // Connect to Photon
+        // Load cached nickname
+        if (nicknameInput != null)
+        {
+            string nickName = PlayerPrefs.GetString("PlayerNickname", "Player" + Random.Range(1000, 9999));
+            nicknameInput.text = nickName;
+        }
+
         if (!PhotonNetwork.IsConnected)
         {
             PhotonNetwork.ConnectUsingSettings();
@@ -41,46 +76,72 @@ public class LobbyManager : MonoBehaviourPunCallbacks
 
     public override void OnConnectedToMaster()
     {
-        statusText.text = "Connected to Master Server. Ready to Join!";
-        joinButton.interactable = true;
+        if (statusText != null) statusText.text = "Connected to Master. Joining Lobby...";
+        PhotonNetwork.JoinLobby();
+    }
+
+    public override void OnJoinedLobby()
+    {
+        if (statusText != null) statusText.text = "Joined Lobby. Ready to create/join rooms!";
+        if (createRoomButton != null) createRoomButton.interactable = true;
+        cachedRoomList.Clear();
+        UpdateRoomListView();
     }
 
     public override void OnDisconnected(DisconnectCause cause)
     {
-        statusText.text = "Disconnected: " + cause.ToString() + ". Reconnecting...";
-        joinButton.interactable = false;
-        lobbyPanel.SetActive(true);
-        waitingPanel.SetActive(false);
+        if (statusText != null) statusText.text = "Disconnected: " + cause.ToString() + ". Reconnecting...";
+        if (createRoomButton != null) createRoomButton.interactable = false;
+        if (lobbyPanel != null) lobbyPanel.SetActive(true);
+        if (waitingPanel != null) waitingPanel.SetActive(false);
         PhotonNetwork.ConnectUsingSettings();
     }
 
-    public void OnJoinButtonClicked()
+    public void OnCreateRoomButtonClicked()
     {
-        statusText.text = "Searching for a room...";
-        joinButton.interactable = false;
+        string roomName = roomNameInput != null ? roomNameInput.text : "";
+        if (string.IsNullOrEmpty(roomName))
+        {
+            if (statusText != null) statusText.text = "Room Name cannot be empty!";
+            return;
+        }
 
-        // Try to join any random room
-        PhotonNetwork.JoinRandomRoom();
+        // Set nickname
+        string nickname = nicknameInput != null ? nicknameInput.text : "Player";
+        PhotonNetwork.NickName = nickname;
+        PlayerPrefs.SetString("PlayerNickname", nickname);
+
+        if (statusText != null) statusText.text = "Creating room: " + roomName + "...";
+        RoomOptions roomOptions = new RoomOptions { MaxPlayers = 2 };
+        PhotonNetwork.CreateRoom(roomName, roomOptions);
     }
 
-    public override void OnJoinRandomFailed(short returnCode, string message)
+    public void JoinRoom(string roomName)
     {
-        statusText.text = "No empty room found. Creating a new room...";
-        
-        // Create a room with a limit of 2 players
-        RoomOptions roomOptions = new RoomOptions();
-        roomOptions.MaxPlayers = 2;
-        
-        PhotonNetwork.CreateRoom(null, roomOptions);
+        string nickname = nicknameInput != null ? nicknameInput.text : "Player";
+        PhotonNetwork.NickName = nickname;
+        PlayerPrefs.SetString("PlayerNickname", nickname);
+
+        if (statusText != null) statusText.text = "Joining room: " + roomName + "...";
+        PhotonNetwork.JoinRoom(roomName);
     }
 
     public override void OnJoinedRoom()
     {
-        statusText.text = "Joined Room successfully!";
-        lobbyPanel.SetActive(false);
-        waitingPanel.SetActive(true);
-        
+        if (statusText != null) statusText.text = "Joined Room: " + PhotonNetwork.CurrentRoom.Name;
+        if (lobbyPanel != null) lobbyPanel.SetActive(false);
+        if (waitingPanel != null) waitingPanel.SetActive(true);
         UpdateWaitingStatus();
+    }
+
+    public override void OnCreateRoomFailed(short returnCode, string message)
+    {
+        if (statusText != null) statusText.text = "Failed to create room: " + message;
+    }
+
+    public override void OnJoinRoomFailed(short returnCode, string message)
+    {
+        if (statusText != null) statusText.text = "Failed to join room: " + message;
     }
 
     public override void OnPlayerEnteredRoom(Player newPlayer)
@@ -93,15 +154,39 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         UpdateWaitingStatus();
     }
 
+    public void OnLeaveRoomButtonClicked()
+    {
+        if (statusText != null) statusText.text = "Leaving room...";
+        PhotonNetwork.LeaveRoom();
+    }
+
+    public override void OnLeftRoom()
+    {
+        if (statusText != null) statusText.text = "Returned to Lobby.";
+        if (lobbyPanel != null) lobbyPanel.SetActive(true);
+        if (waitingPanel != null) waitingPanel.SetActive(false);
+        PhotonNetwork.JoinLobby();
+    }
+
     private void UpdateWaitingStatus()
     {
         if (PhotonNetwork.CurrentRoom != null)
         {
+            string playersInfo = "Players in Room:\n";
+            foreach (var kvp in PhotonNetwork.CurrentRoom.Players)
+            {
+                playersInfo += $"- {kvp.Value.NickName} {(kvp.Value.IsLocal ? "(You)" : "")}\n";
+            }
+            
             int playerCount = PhotonNetwork.CurrentRoom.PlayerCount;
             int maxPlayers = PhotonNetwork.CurrentRoom.MaxPlayers;
-            waitingText.text = $"Waiting for Players...\n({playerCount} / {maxPlayers})";
             
-            if (startButton)
+            if (waitingText != null)
+            {
+                waitingText.text = $"Room: {PhotonNetwork.CurrentRoom.Name}\n({playerCount} / {maxPlayers})\n\n{playersInfo}";
+            }
+
+            if (startButton != null)
             {
                 startButton.SetActive(PhotonNetwork.IsMasterClient);
             }
@@ -112,145 +197,66 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     {
         if (PhotonNetwork.IsMasterClient)
         {
-            statusText.text = "Starting game...";
+            if (statusText != null) statusText.text = "Starting game...";
             PhotonNetwork.LoadLevel(GAME_SCENE_NAME);
         }
     }
 
-    // Helper method to create canvas and UI elements at runtime
-    private void CreateDynamicUI()
+    public override void OnRoomListUpdate(List<RoomInfo> roomList)
     {
-        // 1. Create Canvas
-        GameObject canvasObj = new GameObject("LobbyCanvas");
-        Canvas canvas = canvasObj.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvasObj.AddComponent<CanvasScaler>();
-        canvasObj.AddComponent<GraphicRaycaster>();
-
-        // Create EventSystem if not exists
-        if (FindObjectOfType<UnityEngine.EventSystems.EventSystem>() == null)
+        foreach (RoomInfo room in roomList)
         {
-            GameObject eventSystemObj = new GameObject("EventSystem");
-            eventSystemObj.AddComponent<UnityEngine.EventSystems.EventSystem>();
-            eventSystemObj.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+            if (room.RemovedFromList)
+            {
+                cachedRoomList.Remove(room.Name);
+            }
+            else
+            {
+                cachedRoomList[room.Name] = room;
+            }
+        }
+        UpdateRoomListView();
+    }
+
+    private void UpdateRoomListView()
+    {
+        if (roomListContent == null || roomItemPrefab == null) return;
+
+        // Clear existing room list items
+        foreach (Transform child in roomListContent)
+        {
+            Destroy(child.gameObject);
         }
 
-        // Create Background Panel
-        GameObject bgObj = new GameObject("Background");
-        bgObj.transform.SetParent(canvasObj.transform, false);
-        Image bgImage = bgObj.AddComponent<Image>();
-        bgImage.color = new Color(0.1f, 0.1f, 0.15f, 1f);
-        RectTransform bgRect = bgObj.GetComponent<RectTransform>();
-        bgRect.anchorMin = Vector2.zero;
-        bgRect.anchorMax = Vector2.one;
-        bgRect.sizeDelta = Vector2.zero;
+        // Populate room list items
+        foreach (var entry in cachedRoomList)
+        {
+            RoomInfo room = entry.Value;
+            if (room.IsOpen && room.IsVisible && room.PlayerCount > 0)
+            {
+                GameObject itemObj = Instantiate(roomItemPrefab, roomListContent);
+                
+                // Set name text
+                Text roomNameText = itemObj.transform.Find("RoomNameText")?.GetComponent<Text>();
+                if (roomNameText != null)
+                {
+                    roomNameText.text = room.Name;
+                }
 
-        // 2. Create Lobby Panel
-        lobbyPanel = new GameObject("LobbyPanel");
-        lobbyPanel.transform.SetParent(canvasObj.transform, false);
-        RectTransform lobbyRect = lobbyPanel.AddComponent<RectTransform>();
-        lobbyRect.anchorMin = Vector2.zero;
-        lobbyRect.anchorMax = Vector2.one;
-        lobbyRect.sizeDelta = Vector2.zero;
+                // Set players count text
+                Text playerCountText = itemObj.transform.Find("PlayerCountText")?.GetComponent<Text>();
+                if (playerCountText != null)
+                {
+                    playerCountText.text = $"{room.PlayerCount}/{room.MaxPlayers}";
+                }
 
-        // Title Text
-        GameObject titleObj = new GameObject("TitleText");
-        titleObj.transform.SetParent(lobbyPanel.transform, false);
-        Text titleText = titleObj.AddComponent<Text>();
-        titleText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        titleText.text = "ANCIENT EGYPT MULTIPLAYER";
-        titleText.fontSize = 36;
-        titleText.alignment = TextAnchor.MiddleCenter;
-        titleText.color = new Color(0.9f, 0.75f, 0.2f);
-        RectTransform titleRect = titleObj.GetComponent<RectTransform>();
-        titleRect.anchoredPosition = new Vector2(0, 150);
-        titleRect.sizeDelta = new Vector2(500, 100);
-
-        // Status Text
-        GameObject statusObj = new GameObject("StatusText");
-        statusObj.transform.SetParent(lobbyPanel.transform, false);
-        statusText = statusObj.AddComponent<Text>();
-        statusText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        statusText.text = "Initializing...";
-        statusText.fontSize = 18;
-        statusText.alignment = TextAnchor.MiddleCenter;
-        statusText.color = Color.white;
-        RectTransform statusRect = statusObj.GetComponent<RectTransform>();
-        statusRect.anchoredPosition = new Vector2(0, 50);
-        statusRect.sizeDelta = new Vector2(600, 50);
-
-        // Join Button
-        GameObject buttonObj = new GameObject("JoinButton");
-        buttonObj.transform.SetParent(lobbyPanel.transform, false);
-        Image btnImage = buttonObj.AddComponent<Image>();
-        btnImage.color = new Color(0.2f, 0.6f, 0.3f);
-        joinButton = buttonObj.AddComponent<Button>();
-        RectTransform btnRect = buttonObj.GetComponent<RectTransform>();
-        btnRect.anchoredPosition = new Vector2(0, -50);
-        btnRect.sizeDelta = new Vector2(250, 60);
-
-        // Join Button Text
-        GameObject btnTextObj = new GameObject("BtnText");
-        btnTextObj.transform.SetParent(buttonObj.transform, false);
-        Text btnText = btnTextObj.AddComponent<Text>();
-        btnText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        btnText.text = "JOIN QUICK PLAY";
-        btnText.fontSize = 20;
-        btnText.alignment = TextAnchor.MiddleCenter;
-        btnText.color = Color.white;
-        RectTransform btnTextRect = btnTextObj.GetComponent<RectTransform>();
-        btnTextRect.anchorMin = Vector2.zero;
-        btnTextRect.anchorMax = Vector2.one;
-        btnTextRect.sizeDelta = Vector2.zero;
-
-        joinButton.onClick.AddListener(OnJoinButtonClicked);
-
-        // 3. Create Waiting Panel
-        waitingPanel = new GameObject("WaitingPanel");
-        waitingPanel.transform.SetParent(canvasObj.transform, false);
-        RectTransform waitRect = waitingPanel.AddComponent<RectTransform>();
-        waitRect.anchorMin = Vector2.zero;
-        waitRect.anchorMax = Vector2.one;
-        waitRect.sizeDelta = Vector2.zero;
-
-        // Waiting Text
-        GameObject waitingTextObj = new GameObject("WaitingText");
-        waitingTextObj.transform.SetParent(waitingPanel.transform, false);
-        waitingText = waitingTextObj.AddComponent<Text>();
-        waitingText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        waitingText.text = "Waiting for Players...";
-        waitingText.fontSize = 28;
-        waitingText.alignment = TextAnchor.MiddleCenter;
-        waitingText.color = Color.yellow;
-        RectTransform waitingTextRect = waitingTextObj.GetComponent<RectTransform>();
-        waitingTextRect.anchoredPosition = new Vector2(0, 80);
-        waitingTextRect.sizeDelta = new Vector2(500, 150);
-
-        // Start Game Button (for Master Client)
-        startButton = new GameObject("StartGameButton");
-        startButton.transform.SetParent(waitingPanel.transform, false);
-        Image startBtnImg = startButton.AddComponent<Image>();
-        startBtnImg.color = new Color(0.2f, 0.5f, 0.8f);
-        Button startBtn = startButton.AddComponent<Button>();
-        RectTransform startBtnRect = startButton.GetComponent<RectTransform>();
-        startBtnRect.anchoredPosition = new Vector2(0, -80);
-        startBtnRect.sizeDelta = new Vector2(250, 60);
-
-        // Start Button Text
-        GameObject startBtnTextObj = new GameObject("StartBtnText");
-        startBtnTextObj.transform.SetParent(startButton.transform, false);
-        Text startBtnText = startBtnTextObj.AddComponent<Text>();
-        startBtnText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        startBtnText.text = "START GAME NOW";
-        startBtnText.fontSize = 20;
-        startBtnText.alignment = TextAnchor.MiddleCenter;
-        startBtnText.color = Color.white;
-        RectTransform startBtnTextRect = startBtnTextObj.GetComponent<RectTransform>();
-        startBtnTextRect.anchorMin = Vector2.zero;
-        startBtnTextRect.anchorMax = Vector2.one;
-        startBtnTextRect.sizeDelta = Vector2.zero;
-
-        startBtn.onClick.AddListener(OnStartButtonClicked);
-        startButton.SetActive(false);
+                // Set join button listener
+                Button joinBtn = itemObj.transform.Find("JoinButton")?.GetComponent<Button>();
+                if (joinBtn != null)
+                {
+                    joinBtn.onClick.AddListener(() => JoinRoom(room.Name));
+                }
+            }
+        }
     }
 }

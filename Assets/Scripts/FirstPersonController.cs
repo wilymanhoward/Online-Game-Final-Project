@@ -91,6 +91,18 @@ public class FirstPersonController : MonoBehaviourPun
     public float deathYThreshold = -15f;
     private Vector3 activeCheckpointPosition;
 
+    // Camera shake fields
+    private Vector3 cameraShakeOffset = Vector3.zero;
+
+    // Death Spam Settings
+    [Header("Death Spam Settings")]
+    public int requiredClicksForRespawn = 5;
+    private bool isDead = false;
+    private int clickCountToRespawn = 0;
+    private GameObject deathOverlayObj;
+    private UnityEngine.UI.Text deathClicksText;
+    private UnityEngine.UI.Image deathProgressBarFill;
+
     // Vault wall IK
     private Vector3 vaultWallContactPoint;
     private float vaultExitBlend = 0f;
@@ -205,11 +217,47 @@ public class FirstPersonController : MonoBehaviourPun
         activeCheckpointPosition = transform.position;
 
         InitializeThrowVisuals();
+
+        if (!PhotonNetwork.IsConnected || photonView.IsMine)
+        {
+            CreateDeathUI();
+        }
     }
 
     void Update()
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+
+        if (isDead)
+        {
+            if (Input.GetMouseButtonDown(0))
+            {
+                clickCountToRespawn++;
+                TriggerCameraShake(0.12f, 0.15f); // slight shake feedback on click
+                UpdateDeathUI();
+                
+                if (clickCountToRespawn >= requiredClicksForRespawn)
+                {
+                    ExecuteRespawn();
+                }
+            }
+
+            // Lock camera movements during death, but keep positioning stable
+            if (playerCamera != null)
+            {
+                Vector3 activeOffset = cameraOffset;
+                if (headJoint != null)
+                {
+                    playerCamera.transform.position = headJoint.position + transform.TransformDirection(activeOffset) + cameraShakeOffset;
+                }
+                else
+                {
+                    playerCamera.transform.position = transform.position + new Vector3(activeOffset.x, 1.6f, activeOffset.z) + cameraShakeOffset;
+                }
+                playerCamera.transform.rotation = Quaternion.Euler(pitch, transform.eulerAngles.y, 0f);
+            }
+            return;
+        }
 
         // 1. Camera Look Rotation
         float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
@@ -242,11 +290,11 @@ public class FirstPersonController : MonoBehaviourPun
 
             if (headJoint != null)
             {
-                playerCamera.transform.position = headJoint.position + transform.TransformDirection(activeOffset);
+                playerCamera.transform.position = headJoint.position + transform.TransformDirection(activeOffset) + cameraShakeOffset;
             }
             else
             {
-                playerCamera.transform.position = transform.position + new Vector3(activeOffset.x, 1.6f, activeOffset.z);
+                playerCamera.transform.position = transform.position + new Vector3(activeOffset.x, 1.6f, activeOffset.z) + cameraShakeOffset;
             }
             
             // Set rotation
@@ -334,6 +382,7 @@ public class FirstPersonController : MonoBehaviourPun
         // Check for falling below death boundaries
         if (transform.position.y < deathYThreshold)
         {
+            Debug.Log("Respawn triggered via falling check: Y=" + transform.position.y + ", deathYThreshold=" + deathYThreshold);
             Respawn();
         }
 
@@ -928,6 +977,7 @@ public class FirstPersonController : MonoBehaviourPun
         }
         else if (CompareSafeTag(other, "KillZone") || CompareSafeTag(other, "DeadZone"))
         {
+            Debug.Log("Respawn triggered via OnTriggerEnter with: " + other.gameObject.name + ", Tag: " + other.gameObject.tag);
             Respawn();
         }
     }
@@ -955,6 +1005,7 @@ public class FirstPersonController : MonoBehaviourPun
         }
         else if (CompareSafeTag(hit.collider, "KillZone") || CompareSafeTag(hit.collider, "DeadZone"))
         {
+            Debug.Log("Respawn triggered via OnControllerColliderHit with: " + hit.collider.gameObject.name + ", Tag: " + hit.collider.gameObject.tag);
             Respawn();
         }
     }
@@ -964,7 +1015,40 @@ public class FirstPersonController : MonoBehaviourPun
         // Only respawn the local player client
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
 
-        Debug.Log("Player died. Respawning at recent checkpoint: " + activeCheckpointPosition);
+        if (!isDead)
+        {
+            isDead = true;
+            clickCountToRespawn = 0;
+            
+            // Reset the giant to spawn position!
+            var giant = FindObjectOfType<GiantPharaohAI>();
+            if (giant != null)
+            {
+                giant.ResetToSpawn();
+            }
+
+            // Ensure UI exists and is shown
+            if (deathOverlayObj == null)
+            {
+                CreateDeathUI();
+            }
+
+            if (deathOverlayObj != null)
+            {
+                deathOverlayObj.SetActive(true);
+                UpdateDeathUI();
+            }
+        }
+    }
+
+    private void ExecuteRespawn()
+    {
+        if (deathOverlayObj != null)
+        {
+            deathOverlayObj.SetActive(false);
+        }
+
+        Debug.Log("Player respawning at recent checkpoint after click spam: " + activeCheckpointPosition);
 
         // Temporarily disable CharacterController so we can modify the transform position directly
         if (controller != null)
@@ -979,5 +1063,156 @@ public class FirstPersonController : MonoBehaviourPun
         {
             controller.enabled = true;
         }
+
+        isDead = false;
+    }
+
+    private void CreateDeathUI()
+    {
+        if (deathOverlayObj != null) return;
+
+        // Create Canvas GameObject
+        deathOverlayObj = new GameObject("DeathOverlayCanvas");
+        Canvas canvas = deathOverlayObj.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 999;
+        
+        // Add CanvasScaler
+        var scaler = deathOverlayObj.AddComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        
+        // Add GraphicRaycaster
+        deathOverlayObj.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+
+        // 1. Dark Red Overlay Panel
+        GameObject panelObj = new GameObject("BackgroundPanel");
+        panelObj.transform.SetParent(deathOverlayObj.transform, false);
+        var panelImage = panelObj.AddComponent<UnityEngine.UI.Image>();
+        panelImage.color = new Color(0.08f, 0.01f, 0.01f, 0.85f); // Transparent dark red
+        
+        var rectPanel = panelObj.GetComponent<RectTransform>();
+        rectPanel.anchorMin = Vector2.zero;
+        rectPanel.anchorMax = Vector2.one;
+        rectPanel.sizeDelta = Vector2.zero;
+
+        // 2. Title Text "YOU DIED"
+        GameObject titleObj = new GameObject("TitleText");
+        titleObj.transform.SetParent(panelObj.transform, false);
+        var titleText = titleObj.AddComponent<UnityEngine.UI.Text>();
+        titleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        titleText.text = "YOU DIED";
+        titleText.fontSize = 90;
+        titleText.alignment = TextAnchor.MiddleCenter;
+        titleText.color = new Color(0.9f, 0.1f, 0.1f, 1f);
+        
+        var rectTitle = titleObj.GetComponent<RectTransform>();
+        rectTitle.anchorMin = new Vector2(0.5f, 0.6f);
+        rectTitle.anchorMax = new Vector2(0.5f, 0.6f);
+        rectTitle.anchoredPosition = new Vector2(0f, 50f);
+        rectTitle.sizeDelta = new Vector2(800f, 150f);
+
+        // Add a soft glow shadow component
+        var shadow = titleObj.AddComponent<UnityEngine.UI.Shadow>();
+        shadow.effectColor = new Color(1f, 0f, 0f, 0.5f);
+        shadow.effectDistance = new Vector2(4f, -4f);
+
+        // 3. Subtitle Text "Spam Left Click to Respawn!"
+        GameObject subObj = new GameObject("SubtitleText");
+        subObj.transform.SetParent(panelObj.transform, false);
+        var subText = subObj.AddComponent<UnityEngine.UI.Text>();
+        subText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        subText.text = "Spam Left Click to Respawn!";
+        subText.fontSize = 35;
+        subText.alignment = TextAnchor.MiddleCenter;
+        subText.color = new Color(0.8f, 0.8f, 0.8f, 1f);
+        
+        var rectSub = subObj.GetComponent<RectTransform>();
+        rectSub.anchorMin = new Vector2(0.5f, 0.5f);
+        rectSub.anchorMax = new Vector2(0.5f, 0.5f);
+        rectSub.anchoredPosition = new Vector2(0f, -30f);
+        rectSub.sizeDelta = new Vector2(800f, 50f);
+
+        // 4. Progress Text "(Clicks: 0 / 5)"
+        GameObject progressTextObj = new GameObject("ProgressText");
+        progressTextObj.transform.SetParent(panelObj.transform, false);
+        deathClicksText = progressTextObj.AddComponent<UnityEngine.UI.Text>();
+        deathClicksText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        deathClicksText.text = "Clicks: 0 / " + requiredClicksForRespawn;
+        deathClicksText.fontSize = 28;
+        deathClicksText.alignment = TextAnchor.MiddleCenter;
+        deathClicksText.color = new Color(1f, 0.3f, 0.3f, 1f);
+        
+        var rectProg = progressTextObj.GetComponent<RectTransform>();
+        rectProg.anchorMin = new Vector2(0.5f, 0.45f);
+        rectProg.anchorMax = new Vector2(0.5f, 0.45f);
+        rectProg.anchoredPosition = new Vector2(0f, -80f);
+        rectProg.sizeDelta = new Vector2(400f, 40f);
+
+        // 5. Progress Bar Background
+        GameObject barBgObj = new GameObject("ProgressBarBackground");
+        barBgObj.transform.SetParent(panelObj.transform, false);
+        var barBgImage = barBgObj.AddComponent<UnityEngine.UI.Image>();
+        barBgImage.color = new Color(0.2f, 0.05f, 0.05f, 1f);
+        
+        var rectBarBg = barBgObj.GetComponent<RectTransform>();
+        rectBarBg.anchorMin = new Vector2(0.5f, 0.4f);
+        rectBarBg.anchorMax = new Vector2(0.5f, 0.4f);
+        rectBarBg.anchoredPosition = new Vector2(0f, -120f);
+        rectBarBg.sizeDelta = new Vector2(400f, 20f);
+
+        // 6. Progress Bar Fill
+        GameObject barFillObj = new GameObject("ProgressBarFill");
+        barFillObj.transform.SetParent(barBgObj.transform, false);
+        deathProgressBarFill = barFillObj.AddComponent<UnityEngine.UI.Image>();
+        deathProgressBarFill.color = new Color(0.9f, 0.1f, 0.1f, 1f);
+        
+        var rectBarFill = barFillObj.GetComponent<RectTransform>();
+        rectBarFill.anchorMin = new Vector2(0f, 0f);
+        rectBarFill.anchorMax = new Vector2(0f, 1f);
+        rectBarFill.pivot = new Vector2(0f, 0.5f);
+        rectBarFill.anchoredPosition = Vector2.zero;
+        rectBarFill.sizeDelta = new Vector2(0f, 0f);
+
+        // Hide initially
+        deathOverlayObj.SetActive(false);
+    }
+
+    private void UpdateDeathUI()
+    {
+        if (deathOverlayObj == null) return;
+        
+        if (deathClicksText != null)
+        {
+            deathClicksText.text = "Clicks: " + clickCountToRespawn + " / " + requiredClicksForRespawn;
+        }
+
+        if (deathProgressBarFill != null)
+        {
+            float fillPct = (float)clickCountToRespawn / requiredClicksForRespawn;
+            var rect = deathProgressBarFill.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(fillPct * 400f, 0f);
+        }
+    }
+
+    public void TriggerCameraShake(float duration, float magnitude)
+    {
+        // Only shake local player camera
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+
+        StartCoroutine(DoCameraShake(duration, magnitude));
+    }
+
+    private System.Collections.IEnumerator DoCameraShake(float duration, float magnitude)
+    {
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float currentMagnitude = magnitude * (1f - (elapsed / duration));
+            cameraShakeOffset = Random.insideUnitSphere * currentMagnitude;
+            yield return null;
+        }
+        cameraShakeOffset = Vector3.zero;
     }
 }
