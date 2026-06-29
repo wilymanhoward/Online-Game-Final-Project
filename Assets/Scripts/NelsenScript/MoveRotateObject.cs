@@ -27,6 +27,28 @@ public class MoveRotateObject : MonoBehaviour
     private Vector3 targetPosition;
     private Quaternion targetRotation;
 
+    [Header("Open Delay Settings")]
+    [SerializeField] private bool openWithDelay = false;
+    public bool OpenWithDelay
+    {
+        get => openWithDelay;
+        set => openWithDelay = value;
+    }
+    [SerializeField] private float openDelay = 1f;
+
+    private Coroutine openCoroutine;
+
+    [Header("Close Over Time Settings")]
+    [SerializeField] private bool closeOverTime = false;
+    public bool CloseOverTime
+    {
+        get => closeOverTime;
+        set => closeOverTime = value;
+    }
+    [SerializeField] private float closeDelay = 3f;
+
+    private Coroutine closeCoroutine;
+
     void Start()
     {
         isActive = false;
@@ -86,19 +108,70 @@ public class MoveRotateObject : MonoBehaviour
 
     public void Activate(float openSpeed)
     {
+        if (openCoroutine != null)
+        {
+            StopCoroutine(openCoroutine);
+            openCoroutine = null;
+        }
+
+        if (openWithDelay)
+        {
+            openCoroutine = StartCoroutine(OpenAfterDelay(openDelay, openSpeed));
+        }
+        else
+        {
+            ExecuteOpen(openSpeed);
+        }
+    }
+
+    private void ExecuteOpen(float openSpeed)
+    {
         currentOpenSpeed = openSpeed == 0f ? baseOpenSpeed : openSpeed;
         Debug.Log($"{name} Activated");
         isActive = true;
         targetPosition = openPosition;
         targetRotation = Quaternion.Euler(openRotation);
+
+        if (closeOverTime)
+        {
+            if (closeCoroutine != null)
+            {
+                StopCoroutine(closeCoroutine);
+            }
+            closeCoroutine = StartCoroutine(CloseAfterDelay(closeDelay));
+        }
     }
 
     public void Deactivate(float closeSpeed)
     {
+        if (openCoroutine != null)
+        {
+            StopCoroutine(openCoroutine);
+            openCoroutine = null;
+        }
+
         currentCloseSpeed = closeSpeed == 0f ? baseCloseSpeed : closeSpeed;
         Debug.Log($"{name} Deactivated");
         isActive = false;
         targetPosition = closedPosition;
         targetRotation = Quaternion.Euler(closedRotation);
+
+        if (closeCoroutine != null)
+        {
+            StopCoroutine(closeCoroutine);
+            closeCoroutine = null;
+        }
+    }
+
+    private IEnumerator OpenAfterDelay(float delay, float openSpeed)
+    {
+        yield return new WaitForSeconds(delay);
+        ExecuteOpen(openSpeed);
+    }
+
+    private IEnumerator CloseAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        Deactivate();
     }
 }

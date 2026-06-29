@@ -103,9 +103,9 @@ public class PlayerInteract : MonoBehaviour
         WaitingForTeam = true;
         Debug.Log("WaitingForTeam");
         //Disable movement and look
-        if (playerController != null)
+        if (inputReader != null)
         {
-            playerController.SetInputsDisabled(true);
+            inputReader.SetInputsDisabled(true);
         }
 
         if (currentInteractable is InteractLever lever)
@@ -118,9 +118,9 @@ public class PlayerInteract : MonoBehaviour
     private void ExitWaitForTeam(){
         WaitingForTeam = false;
         
-        if (playerController != null)
+        if (inputReader != null)
         {
-            playerController.SetInputsDisabled(false);
+            inputReader.SetInputsDisabled(false);
         }
 
         if (currentInteractable is InteractLever lever)

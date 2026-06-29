@@ -117,21 +117,7 @@ public class FirstPersonController : MonoBehaviourPun
     private bool jumpInputPressed;
     private bool aimInputPressed;
     private bool throwInputPressed;
-    private bool inputsDisabled = false;
-
-    public void SetInputsDisabled(bool disabled)
-    {
-        inputsDisabled = disabled;
-        if (disabled)
-        {
-            moveInput = Vector2.zero;
-            lookInput = Vector2.zero;
-            sprintInputPressed = false;
-            jumpInputPressed = false;
-            aimInputPressed = false;
-            throwInputPressed = false;
-        }
-    }
+    // Inputs are handled and blocked inside the InputReader ScriptableObject
 
     private void OnEnable()
     {
@@ -186,56 +172,48 @@ public class FirstPersonController : MonoBehaviourPun
     private void HandleWalk(Vector2 value)
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
-        if (inputsDisabled) return;
         moveInput = value;
     }
 
     private void HandleLook(Vector2 value)
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
-        if (inputsDisabled) return;
         lookInput = value;
     }
 
     private void HandleJump()
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
-        if (inputsDisabled) return;
         jumpInputPressed = true;
     }
 
     private void HandleSprint()
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
-        if (inputsDisabled) return;
         sprintInputPressed = true;
     }
 
     private void HandleSprintCanceled()
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
-        if (inputsDisabled) return;
         sprintInputPressed = false;
     }
 
     private void HandleAim()
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
-        if (inputsDisabled) return;
         aimInputPressed = true;
     }
 
     private void HandleAimCanceled()
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
-        if (inputsDisabled) return;
         aimInputPressed = false;
     }
 
     private void HandleThrow()
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
-        if (inputsDisabled) return;
         throwInputPressed = true;
     }
 

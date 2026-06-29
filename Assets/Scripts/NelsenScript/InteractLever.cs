@@ -14,19 +14,13 @@ public class InteractLever : MonoBehaviour, IInteractable
         set => multiplePeopleRequired = value;
     }
 
-    public bool CloseOverTime = false;
-    [SerializeField] private float closeDelay = 3f;
-
     [Header("Lever Settings")]
     public bool WaitingForTeam = false;
     public bool LeverActivated = false;
 
-    private Coroutine closeCoroutine;
-
     [Header("Lever References")]
     [SerializeField] private InteractLever SecondLever;
     
-    public UnityEvent OnCloseOvertimeEvent;
     public UnityEvent OnActivateEvent;
     public UnityEvent OnDeactivateEvent;
 
@@ -94,17 +88,11 @@ public class InteractLever : MonoBehaviour, IInteractable
     {
         LeverActivated = true;
         OnActivate();
-        OnCloseOverTime();
     }
 
     public void Deactivate()
     {
         LeverActivated = false;
-        if (closeCoroutine != null)
-        {
-            StopCoroutine(closeCoroutine);
-            closeCoroutine = null;
-        }
         OnDeactivate();
     }
 
@@ -121,23 +109,4 @@ public class InteractLever : MonoBehaviour, IInteractable
     }
 
 #endregion
-
-    private void OnCloseOverTime()
-    {
-        if (LeverActivated && CloseOverTime)
-        {
-            if (closeCoroutine != null)
-            {
-                StopCoroutine(closeCoroutine);
-            }
-            closeCoroutine = StartCoroutine(CloseAfterDelay(closeDelay));
-        }
-    }
-
-    private IEnumerator CloseAfterDelay(float delay)
-    {
-        yield return new WaitForSeconds(delay);
-        Deactivate();
-        OnCloseOvertimeEvent?.Invoke();
-    }
 }
