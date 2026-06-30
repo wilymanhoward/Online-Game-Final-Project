@@ -49,7 +49,36 @@ public class ThrowableObject : MonoBehaviourPun
             return;
         }
 
-        // Apply custom logic on collision if needed (e.g., spawn particles, play sound, etc.)
-        // For now, let it bounce naturally using Unity physics.
+        // Check if hit the giant Pharaoh
+        GiantPharaohAI giant = collision.gameObject.GetComponentInParent<GiantPharaohAI>();
+        if (giant != null)
+        {
+            isDestroyed = true;
+
+            if (PhotonNetwork.IsConnected)
+            {
+                if (photonView.IsMine)
+                {
+                    photonView.RPC("SyncPharaohKnockdown", RpcTarget.All);
+                    PhotonNetwork.Destroy(gameObject);
+                }
+            }
+            else
+            {
+                giant.Knockdown();
+                Destroy(gameObject);
+            }
+            return;
+        }
+    }
+
+    [PunRPC]
+    public void SyncPharaohKnockdown()
+    {
+        GiantPharaohAI giant = FindObjectOfType<GiantPharaohAI>();
+        if (giant != null)
+        {
+            giant.Knockdown();
+        }
     }
 }

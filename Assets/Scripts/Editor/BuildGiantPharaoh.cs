@@ -30,8 +30,9 @@ public static class BuildGiantPharaoh
             controller.RemoveParameter(i);
         }
 
-        // Add speed parameter
+        // Add parameters
         controller.AddParameter("Speed", AnimatorControllerParameterType.Float);
+        controller.AddParameter("IsFallen", AnimatorControllerParameterType.Bool);
 
         // Load Clips
         AnimationClip idleClip = LoadClipFromFBX("Assets/Photon/PhotonUnityNetworking/Demos/Shared Assets/Animations/HumanoidIdle.fbx");
@@ -41,6 +42,8 @@ public static class BuildGiantPharaoh
         {
             jumpAttackClip = LoadClipFromFBX("Assets/Animation/Heraklios By A. Dizon@Jump.fbx");
         }
+        AnimationClip fallenClip = LoadClipFromFBX("Assets/Animation/Heraklios By A. Dizon@Falling Back Death.fbx");
+        AnimationClip gettingUpClip = LoadClipFromFBX("Assets/Animation/Heraklios By A. Dizon@Getting Up (1).fbx");
 
         AnimatorState idleState = rootStateMachine.AddState("Idle");
         idleState.motion = idleClip;
@@ -50,6 +53,12 @@ public static class BuildGiantPharaoh
 
         AnimatorState jumpAttackState = rootStateMachine.AddState("JumpAttack");
         jumpAttackState.motion = jumpAttackClip;
+
+        AnimatorState fallenState = rootStateMachine.AddState("Fallen");
+        fallenState.motion = fallenClip;
+
+        AnimatorState gettingUpState = rootStateMachine.AddState("GettingUp");
+        gettingUpState.motion = gettingUpClip;
 
         // Transitions
         var toWalk = idleState.AddTransition(walkState);
@@ -64,6 +73,34 @@ public static class BuildGiantPharaoh
         toIdleFromJump.hasExitTime = true;
         toIdleFromJump.exitTime = 1.0f;
         toIdleFromJump.duration = 0.25f;
+
+        // Knockdown transitions
+        var toFallenFromIdle = idleState.AddTransition(fallenState);
+        toFallenFromIdle.AddCondition(AnimatorConditionMode.If, 0f, "IsFallen");
+        toFallenFromIdle.duration = 0.15f;
+
+        var toFallenFromWalk = walkState.AddTransition(fallenState);
+        toFallenFromWalk.AddCondition(AnimatorConditionMode.If, 0f, "IsFallen");
+        toFallenFromWalk.duration = 0.15f;
+
+        // Fallen -> GettingUp recovery transition
+        var toGettingUpFromFallen = fallenState.AddTransition(gettingUpState);
+        toGettingUpFromFallen.AddCondition(AnimatorConditionMode.IfNot, 0f, "IsFallen");
+        toGettingUpFromFallen.duration = 0.25f;
+
+        // GettingUp -> Idle automatic transition (when standing still)
+        var toIdleFromGettingUp = gettingUpState.AddTransition(idleState);
+        toIdleFromGettingUp.hasExitTime = true;
+        toIdleFromGettingUp.exitTime = 1.0f;
+        toIdleFromGettingUp.duration = 0.6f;
+        toIdleFromGettingUp.AddCondition(AnimatorConditionMode.Less, 0.1f, "Speed");
+
+        // GettingUp -> Walk automatic transition (smoothly blend straight into walking stride!)
+        var toWalkFromGettingUp = gettingUpState.AddTransition(walkState);
+        toWalkFromGettingUp.hasExitTime = true;
+        toWalkFromGettingUp.exitTime = 1.0f;
+        toWalkFromGettingUp.duration = 0.8f; // Longer transition duration for a majestic stride blend
+        toWalkFromGettingUp.AddCondition(AnimatorConditionMode.Greater, 0.1f, "Speed");
 
         EditorUtility.SetDirty(controller);
 
@@ -128,9 +165,9 @@ public static class BuildGiantPharaoh
                 {
                     GameObject stickInstance = (GameObject)PrefabUtility.InstantiatePrefab(stickPrefab, handR);
                     stickInstance.name = "Giant Stick";
-                    stickInstance.transform.localPosition = new Vector3(0f, -1.0f, 0f);
-                    stickInstance.transform.localRotation = Quaternion.Euler(180f, 0f, 0f);
-                    stickInstance.transform.localScale = new Vector3(2.98f, 3.29f, 1.74f);
+                    stickInstance.transform.localPosition = new Vector3(0.079f, 0.035f, 1.008f);
+                    stickInstance.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+                    stickInstance.transform.localScale = new Vector3(0.4f, 0.44161072f, 0.23355705f);
                 }
             }
         }
@@ -141,6 +178,9 @@ public static class BuildGiantPharaoh
         {
             pharaohAI = pharaohObj.AddComponent<GiantPharaohAI>();
         }
+
+        // Save as Prefab in Resources
+        PrefabUtility.SaveAsPrefabAsset(pharaohObj, "Assets/Resources/Giant Pharaoh Enemy.prefab");
 
         // Save Scene
         EditorUtility.SetDirty(pharaohObj);

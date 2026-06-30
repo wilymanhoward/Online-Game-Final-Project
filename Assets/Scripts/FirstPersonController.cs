@@ -102,6 +102,22 @@ public class FirstPersonController : MonoBehaviourPun
     private GameObject deathOverlayObj;
     private UnityEngine.UI.Text deathClicksText;
     private UnityEngine.UI.Image deathProgressBarFill;
+ 
+    // Bandage Overlay Settings
+    private struct BandageConfig
+    {
+        public string name;
+        public Vector2 position;
+        public Vector2 size;
+        public float rotation;
+        public float slideDirection; // 1 for forward along rotation axis, -1 for backward
+    }
+    private GameObject bandageCanvasObj;
+    private System.Collections.Generic.List<RectTransform> bandageWraps = new System.Collections.Generic.List<RectTransform>();
+    private System.Collections.Generic.List<Vector2> startPositions = new System.Collections.Generic.List<Vector2>();
+    private System.Collections.Generic.List<Vector2> targetPositions = new System.Collections.Generic.List<Vector2>();
+    private bool bandageActive = false;
+    private Coroutine bandageAnimCoroutine;
 
     // Vault wall IK
     private Vector3 vaultWallContactPoint;
@@ -227,6 +243,11 @@ public class FirstPersonController : MonoBehaviourPun
     void Update()
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+
+        if (Input.GetKeyDown(KeyCode.B) && !isDead)
+        {
+            ToggleBandageOverlay();
+        }
 
         if (isDead)
         {
@@ -1214,5 +1235,248 @@ public class FirstPersonController : MonoBehaviourPun
             yield return null;
         }
         cameraShakeOffset = Vector3.zero;
+    }
+
+    private void ToggleBandageOverlay()
+    {
+        if (bandageCanvasObj == null)
+        {
+            CreateBandageUI();
+        }
+
+        bandageActive = !bandageActive;
+
+        if (bandageAnimCoroutine != null)
+        {
+            StopCoroutine(bandageAnimCoroutine);
+        }
+        bandageAnimCoroutine = StartCoroutine(AnimateBandages(bandageActive));
+    }
+
+    private void CreateBandageUI()
+    {
+        if (bandageCanvasObj != null) return;
+
+        // Try to find BandageOverlayCanvas in the local hierarchy first
+        Transform canvasTransform = transform.Find("BandageOverlayCanvas");
+        if (canvasTransform == null)
+        {
+            canvasTransform = FindDeepChild(transform, "BandageOverlayCanvas");
+        }
+
+        if (canvasTransform != null)
+        {
+            bandageCanvasObj = canvasTransform.gameObject;
+            
+            // Clear list data
+            bandageWraps.Clear();
+            startPositions.Clear();
+            targetPositions.Clear();
+
+            // Find Container child (fallback to canvas root if missing)
+            Transform container = canvasTransform.Find("Container");
+            if (container == null) container = canvasTransform;
+
+            // Cache child bandage strips
+            foreach (Transform child in container)
+            {
+                RectTransform rect = child.GetComponent<RectTransform>();
+                if (rect != null)
+                {
+                    MummyBandageStrip strip = child.GetComponent<MummyBandageStrip>();
+                    if (strip == null)
+                    {
+                        strip = child.gameObject.AddComponent<MummyBandageStrip>();
+                    }
+
+                    // Cache target position and rotation from the hierarchy design
+                    Vector2 targetPos = rect.anchoredPosition;
+                    float rotation = rect.localRotation.eulerAngles.z;
+
+                    // Calculate slide starting position along the rotation axis
+                    float rad = rotation * Mathf.Deg2Rad;
+                    Vector2 dir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
+                    Vector2 offset = dir * (3600f * strip.slideDirection);
+                    Vector2 startPos = targetPos + offset;
+
+                    bandageWraps.Add(rect);
+                    startPositions.Add(startPos);
+                    targetPositions.Add(targetPos);
+
+                    // Set initial state to starting position
+                    rect.anchoredPosition = startPos;
+                }
+            }
+
+            // Hide canvas initially
+            bandageCanvasObj.SetActive(false);
+            return;
+        }
+
+        // Fallback: Create Canvas GameObject programmatically if missing from hierarchy
+        bandageCanvasObj = new GameObject("BandageOverlayCanvas");
+        Canvas canvas = bandageCanvasObj.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 998; // Just under Death UI
+        
+        // Add CanvasScaler
+        var scaler = bandageCanvasObj.AddComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        
+        // Add GraphicRaycaster (non-blocking for gameplay)
+        bandageCanvasObj.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+
+        // Create container panel
+        GameObject containerObj = new GameObject("Container");
+        containerObj.transform.SetParent(bandageCanvasObj.transform, false);
+        var rectContainer = containerObj.AddComponent<RectTransform>();
+        rectContainer.anchorMin = Vector2.zero;
+        rectContainer.anchorMax = Vector2.one;
+        rectContainer.sizeDelta = Vector2.zero;
+
+        // Clear list data
+        bandageWraps.Clear();
+        startPositions.Clear();
+        targetPositions.Clear();
+
+        // Configure 7 medium-large messy horizontal-ish wraps spanning edge-to-edge (X = 0f, Width = 3400f)
+        var configs = new System.Collections.Generic.List<BandageConfig>
+        {
+            new BandageConfig { name = "A1", position = new Vector2(0f, 380f), size = new Vector2(3400f, 180f), rotation = 8f, slideDirection = -1f },
+            new BandageConfig { name = "A2", position = new Vector2(0f, -380f), size = new Vector2(3400f, 180f), rotation = -6f, slideDirection = 1f },
+            new BandageConfig { name = "A3", position = new Vector2(0f, 200f), size = new Vector2(3400f, 150f), rotation = -9f, slideDirection = -1f },
+            new BandageConfig { name = "A4", position = new Vector2(0f, -200f), size = new Vector2(3400f, 150f), rotation = 7f, slideDirection = 1f },
+            new BandageConfig { name = "A5", position = new Vector2(0f, 0f), size = new Vector2(3400f, 140f), rotation = -3f, slideDirection = -1f },
+
+            // Diagonals crossing over to create abstract scattered peepholes
+            new BandageConfig { name = "A6", position = new Vector2(0f, 90f), size = new Vector2(3400f, 130f), rotation = -15f, slideDirection = 1f },
+            new BandageConfig { name = "A7", position = new Vector2(0f, -90f), size = new Vector2(3400f, 130f), rotation = 16f, slideDirection = -1f }
+        };
+
+        foreach (var cfg in configs)
+        {
+            // Calculate direction vector along the rotated axis
+            float rad = cfg.rotation * Mathf.Deg2Rad;
+            Vector2 dir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
+            Vector2 offset = dir * (3600f * cfg.slideDirection); // Larger offset to hide 3400px wide strips completely
+            Vector2 startPos = cfg.position + offset;
+
+            RectTransform rect = CreateBandageStrip(cfg.name, containerObj.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), startPos, cfg.size, cfg.rotation);
+            
+            bandageWraps.Add(rect);
+            startPositions.Add(startPos);
+            targetPositions.Add(cfg.position);
+        }
+
+        // Hide canvas initially
+        bandageCanvasObj.SetActive(false);
+    }
+
+    private RectTransform CreateBandageStrip(string name, Transform parent, Vector2 anchor, Vector2 pivot, Vector2 startPos, Vector2 size, float rotation)
+    {
+        // 1. Root GameObject
+        GameObject stripObj = new GameObject(name);
+        stripObj.transform.SetParent(parent, false);
+        RectTransform rect = stripObj.AddComponent<RectTransform>();
+        rect.anchorMin = anchor;
+        rect.anchorMax = anchor;
+        rect.pivot = pivot;
+        rect.anchoredPosition = startPos;
+        rect.sizeDelta = size;
+        rect.localRotation = Quaternion.Euler(0f, 0f, rotation);
+
+        // Layer 1: Dark sandy shadow/outline
+        var bgImage = stripObj.AddComponent<UnityEngine.UI.Image>();
+        bgImage.color = new Color(0.42f, 0.35f, 0.28f, 0.95f);
+
+        // Layer 2: Main bandage wrap (Beige)
+        GameObject mainObj = new GameObject("MainWrap");
+        mainObj.transform.SetParent(stripObj.transform, false);
+        var rectMain = mainObj.AddComponent<RectTransform>();
+        rectMain.anchorMin = Vector2.zero;
+        rectMain.anchorMax = Vector2.one;
+        rectMain.sizeDelta = new Vector2(0f, -12f); // margin top/bottom
+        var mainImage = mainObj.AddComponent<UnityEngine.UI.Image>();
+        mainImage.color = new Color(0.84f, 0.77f, 0.68f, 1f);
+
+        // Layer 3: Highlight fold (Lighter cream)
+        GameObject highlightObj = new GameObject("HighlightFold");
+        highlightObj.transform.SetParent(mainObj.transform, false);
+        var rectHighlight = highlightObj.AddComponent<RectTransform>();
+        rectHighlight.anchorMin = new Vector2(0f, 0.15f);
+        rectHighlight.anchorMax = new Vector2(1f, 0.35f);
+        rectHighlight.sizeDelta = Vector2.zero;
+        var highlightImage = highlightObj.AddComponent<UnityEngine.UI.Image>();
+        highlightImage.color = new Color(0.92f, 0.87f, 0.81f, 1f);
+
+        // Layer 4: Overlapping secondary strip for textured look (Darker beige)
+        GameObject overlapObj = new GameObject("OverlapStrip");
+        overlapObj.transform.SetParent(mainObj.transform, false);
+        var rectOverlap = overlapObj.AddComponent<RectTransform>();
+        rectOverlap.anchorMin = new Vector2(0f, 0.5f);
+        rectOverlap.anchorMax = new Vector2(1f, 0.95f);
+        rectOverlap.sizeDelta = Vector2.zero;
+        rectOverlap.localRotation = Quaternion.Euler(0f, 0f, -0.8f);
+        var overlapImage = overlapObj.AddComponent<UnityEngine.UI.Image>();
+        overlapImage.color = new Color(0.80f, 0.73f, 0.64f, 1f);
+
+        return rect;
+    }
+
+    private System.Collections.IEnumerator AnimateBandages(bool targetActive)
+    {
+        float duration = targetActive ? 2.5f : 0.85f; // Slower, more dramatic crawl on entry, default on exit
+        float elapsed = 0f;
+
+        var currentStartPos = new System.Collections.Generic.List<Vector2>();
+        foreach (var wrap in bandageWraps)
+        {
+            currentStartPos.Add(wrap.anchoredPosition);
+        }
+
+        if (targetActive && bandageCanvasObj != null)
+        {
+            bandageCanvasObj.SetActive(true);
+        }
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            float easeT = Mathf.SmoothStep(0f, 1f, t);
+
+            for (int i = 0; i < bandageWraps.Count; i++)
+            {
+                Vector2 target = targetActive ? targetPositions[i] : startPositions[i];
+                Vector2 basePos = Vector2.Lerp(currentStartPos[i], target, easeT);
+
+                // Add trembling shake when wrapping onto player's face
+                if (targetActive)
+                {
+                    // Trembling shake fades out as easeT goes to 1.0 (snug wrap)
+                    float shakeStrength = (1f - easeT) * 15f;
+                    float freq = 60f;
+                    float shakeX = Mathf.Sin(elapsed * freq + i * 7f) * shakeStrength + UnityEngine.Random.Range(-shakeStrength * 0.3f, shakeStrength * 0.3f);
+                    float shakeY = Mathf.Cos(elapsed * freq * 0.9f + i * 3f) * shakeStrength + UnityEngine.Random.Range(-shakeStrength * 0.3f, shakeStrength * 0.3f);
+                    
+                    basePos += new Vector2(shakeX, shakeY);
+                }
+
+                bandageWraps[i].anchoredPosition = basePos;
+            }
+
+            yield return null;
+        }
+
+        for (int i = 0; i < bandageWraps.Count; i++)
+        {
+            bandageWraps[i].anchoredPosition = targetActive ? targetPositions[i] : startPositions[i];
+        }
+
+        if (!targetActive && bandageCanvasObj != null)
+        {
+            bandageCanvasObj.SetActive(false);
+        }
     }
 }
