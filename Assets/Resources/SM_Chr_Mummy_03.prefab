@@ -238,7 +238,9 @@ MonoBehaviour:
   throwAnimDuration: 0.3
   cameraAimBlendSpeed: 8
   deathYThreshold: -15
+  fallDeathAirTimeThreshold: 15
   requiredClicksForRespawn: 5
+  inputReader: {fileID: 0}
 --- !u!114 &4464849369396515681
 MonoBehaviour:
   m_ObjectHideFlags: 0

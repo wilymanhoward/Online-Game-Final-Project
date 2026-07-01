@@ -21,6 +21,7 @@ public class InputReader : ScriptableObject, PlayerInput.IMovementActions, Playe
 
     private bool inputsDisabled = false;
     private bool inputsDisabledExceptLook = false;
+    private bool inputsDisabledExceptInteract = false;
 
     public void SetInputsDisabled(bool disabled)
     {
@@ -47,8 +48,25 @@ public class InputReader : ScriptableObject, PlayerInput.IMovementActions, Playe
         }
     }
 
+    public void SetInputsDisabledExceptInteract(bool disabled)
+    {
+        inputsDisabledExceptInteract = disabled;
+        if (disabled)
+        {
+            OnWalk?.Invoke(Vector2.zero);
+            OnLook?.Invoke(Vector2.zero);
+            OnSprintCanceled?.Invoke();
+            OnAimCanceled?.Invoke();
+            OnThrowCanceled?.Invoke();
+        }
+    }
+
     private void OnEnable()
     {
+        inputsDisabled = false;
+        inputsDisabledExceptLook = false;
+        inputsDisabledExceptInteract = false;
+
         if (playerInput != null)
         {
             playerInput.Disable();
@@ -69,19 +87,19 @@ public class InputReader : ScriptableObject, PlayerInput.IMovementActions, Playe
 
     void PlayerInput.IMovementActions.OnWalk(InputAction.CallbackContext context)
     {
-        if (inputsDisabled || inputsDisabledExceptLook) return;
+        if (inputsDisabled || inputsDisabledExceptLook || inputsDisabledExceptInteract) return;
         OnWalk?.Invoke(context.ReadValue<Vector2>());
     }
 
     void PlayerInput.IMovementActions.OnLook(InputAction.CallbackContext context)
     {
-        if (inputsDisabled) return;
+        if (inputsDisabled || inputsDisabledExceptInteract) return;
         OnLook?.Invoke(context.ReadValue<Vector2>());
     }
 
     void PlayerInput.IMovementActions.OnJump(InputAction.CallbackContext context)
     {
-        if (inputsDisabled || inputsDisabledExceptLook) return;
+        if (inputsDisabled || inputsDisabledExceptLook || inputsDisabledExceptInteract) return;
         if (context.phase == InputActionPhase.Performed)
         {
             OnJump?.Invoke();
@@ -94,7 +112,7 @@ public class InputReader : ScriptableObject, PlayerInput.IMovementActions, Playe
 
     void PlayerInput.IMovementActions.OnSprint(InputAction.CallbackContext context)
     {
-        if (inputsDisabled || inputsDisabledExceptLook) return;
+        if (inputsDisabled || inputsDisabledExceptLook || inputsDisabledExceptInteract) return;
         if (context.phase == InputActionPhase.Performed)
         {
             OnSprint?.Invoke();
@@ -116,7 +134,7 @@ public class InputReader : ScriptableObject, PlayerInput.IMovementActions, Playe
 
     void PlayerInput.IInteractActions.OnAim(InputAction.CallbackContext context)
     {
-        if (inputsDisabled || inputsDisabledExceptLook) return;
+        if (inputsDisabled || inputsDisabledExceptLook || inputsDisabledExceptInteract) return;
         if (context.phase == InputActionPhase.Performed)
         {
             OnAim?.Invoke();
@@ -129,7 +147,7 @@ public class InputReader : ScriptableObject, PlayerInput.IMovementActions, Playe
 
     void PlayerInput.IInteractActions.OnThrow(InputAction.CallbackContext context)
     {
-        if (inputsDisabled || inputsDisabledExceptLook) return;
+        if (inputsDisabled || inputsDisabledExceptLook || inputsDisabledExceptInteract) return;
         if (context.phase == InputActionPhase.Performed)
         {
             OnThrow?.Invoke();

@@ -5,6 +5,8 @@ using Photon.Pun;
 [RequireComponent(typeof(PhotonView))]
 public class FirstPersonController : MonoBehaviourPun
 {
+    public static event System.Action<Vector3> OnLocalPlayerRespawn;
+
     [Header("Movement Settings")]
     public float moveSpeed = 5.0f; // Faster walking speed (5.0f)
     public float runSpeed = 8.5f;  // Faster running speed (8.5f)
@@ -88,8 +90,14 @@ public class FirstPersonController : MonoBehaviourPun
     private float cameraAimBlend = 0f;
 
     [Header("Checkpoint System")]
-    public float deathYThreshold = -15f;
+    public float deathYThreshold = -100f;
     private Vector3 activeCheckpointPosition;
+
+    [Header("Fall Damage Settings")]
+    [Tooltip("How long the player must be in the air (in seconds) to die from falling.")]
+    public float fallDeathAirTimeThreshold = 1.0f;
+    private float airTimeCounter = 0f;
+    private bool hitGroundThisFrame = false;
 
     // Camera shake fields
     private Vector3 cameraShakeOffset = Vector3.zero;
@@ -102,6 +110,12 @@ public class FirstPersonController : MonoBehaviourPun
     private GameObject deathOverlayObj;
     private UnityEngine.UI.Text deathClicksText;
     private UnityEngine.UI.Image deathProgressBarFill;
+
+    // Disability Settings
+    private bool isBlind = false;
+    private bool isDeaf = false;
+    private GameObject blindOverlayObj;
+
 
     // Vault wall IK
     private Vector3 vaultWallContactPoint;
@@ -337,6 +351,8 @@ public class FirstPersonController : MonoBehaviourPun
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
 
+        hitGroundThisFrame = false;
+
         if (isDead)
         {
             if (throwInputPressed)
@@ -487,6 +503,28 @@ public class FirstPersonController : MonoBehaviourPun
 
         // Move character controller
         controller.Move(move * Time.deltaTime);
+
+        // Update air time counter and handle death on landing
+        if (controller.isGrounded)
+        {
+            if (airTimeCounter > 0.05f)
+            {
+                Debug.Log($"Landed! Air time accumulated: {airTimeCounter:F2} seconds. Required threshold: {fallDeathAirTimeThreshold:F2} seconds.");
+            }
+            if (airTimeCounter >= fallDeathAirTimeThreshold && !isDead && !isVaulting)
+            {
+                Debug.Log($"Player died from fall damage on landing. Air time: {airTimeCounter:F2} seconds");
+                Respawn();
+            }
+            airTimeCounter = 0f;
+        }
+        else
+        {
+            if (!isDead && !isVaulting)
+            {
+                airTimeCounter += Time.deltaTime;
+            }
+        }
 
         // 3. Update Animator
         if (animator != null && animator.enabled)
@@ -655,6 +693,8 @@ public class FirstPersonController : MonoBehaviourPun
             {
                 isVaulting = false;
                 if (controller != null) controller.enabled = true;
+                verticalVelocity = -2f; // Reset vertical velocity upon ending vault
+                airTimeCounter = 0f;   // Reset air time counter upon ending vault
             }
 
             if (!isVaulting && vaultExitBlend <= 0f)
@@ -717,6 +757,8 @@ public class FirstPersonController : MonoBehaviourPun
     public void StartVaultRPC(Vector3 startPos, Vector3 targetPos, float duration, float peakHeight)
     {
         isVaulting = true;
+        verticalVelocity = 0f; // Reset vertical velocity upon starting vault
+        airTimeCounter = 0f;   // Reset air time counter upon starting vault
         vaultTimer = 0f;
         vaultStartPos = startPos;
         vaultTargetPos = targetPos;
@@ -1115,6 +1157,12 @@ public class FirstPersonController : MonoBehaviourPun
         // Handle solid physical checkpoints and death zones
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
 
+        // Grounding detection: Only if hitting a surface pointing upwards (ground)
+        if (hit.normal.y > 0.7f) // slope angle <= 45 degrees
+        {
+            hitGroundThisFrame = true;
+        }
+
         if (CompareSafeTag(hit.collider, "Checkpoint"))
         {
             // Try to find a custom designated spawn point child, otherwise use the player's exact contact position
@@ -1146,7 +1194,16 @@ public class FirstPersonController : MonoBehaviourPun
         if (!isDead)
         {
             isDead = true;
+            airTimeCounter = 0f; // Reset ground timer immediately on death
             clickCountToRespawn = 0;
+
+            // Make sure inputs are not disabled when entering the dead state
+            if (inputReader != null)
+            {
+                inputReader.SetInputsDisabled(false);
+                inputReader.SetInputsDisabledExceptLook(false);
+                inputReader.SetInputsDisabledExceptInteract(false);
+            }
             
             // Reset the giant to spawn position!
             var giant = FindObjectOfType<GiantPharaohAI>();
@@ -1186,6 +1243,7 @@ public class FirstPersonController : MonoBehaviourPun
 
         transform.position = activeCheckpointPosition;
         verticalVelocity = 0f;
+        airTimeCounter = 0f;
 
         if (controller != null)
         {
@@ -1193,6 +1251,16 @@ public class FirstPersonController : MonoBehaviourPun
         }
 
         isDead = false;
+
+        // Restore control states upon respawn
+        if (inputReader != null)
+        {
+            inputReader.SetInputsDisabled(false);
+            inputReader.SetInputsDisabledExceptLook(false);
+            inputReader.SetInputsDisabledExceptInteract(false);
+        }
+
+        OnLocalPlayerRespawn?.Invoke(activeCheckpointPosition);
     }
 
     private void CreateDeathUI()
@@ -1228,7 +1296,7 @@ public class FirstPersonController : MonoBehaviourPun
         GameObject titleObj = new GameObject("TitleText");
         titleObj.transform.SetParent(panelObj.transform, false);
         var titleText = titleObj.AddComponent<UnityEngine.UI.Text>();
-        titleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        titleText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         titleText.text = "YOU DIED";
         titleText.fontSize = 90;
         titleText.alignment = TextAnchor.MiddleCenter;
@@ -1249,7 +1317,7 @@ public class FirstPersonController : MonoBehaviourPun
         GameObject subObj = new GameObject("SubtitleText");
         subObj.transform.SetParent(panelObj.transform, false);
         var subText = subObj.AddComponent<UnityEngine.UI.Text>();
-        subText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        subText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         subText.text = "Spam Left Click to Respawn!";
         subText.fontSize = 35;
         subText.alignment = TextAnchor.MiddleCenter;
@@ -1265,7 +1333,7 @@ public class FirstPersonController : MonoBehaviourPun
         GameObject progressTextObj = new GameObject("ProgressText");
         progressTextObj.transform.SetParent(panelObj.transform, false);
         deathClicksText = progressTextObj.AddComponent<UnityEngine.UI.Text>();
-        deathClicksText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        deathClicksText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         deathClicksText.text = "Clicks: 0 / " + requiredClicksForRespawn;
         deathClicksText.fontSize = 28;
         deathClicksText.alignment = TextAnchor.MiddleCenter;
