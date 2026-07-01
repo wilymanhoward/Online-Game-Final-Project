@@ -5,6 +5,8 @@ using Photon.Pun;
 [RequireComponent(typeof(PhotonView))]
 public class FirstPersonController : MonoBehaviourPun
 {
+    public static event System.Action<Vector3> OnLocalPlayerRespawn;
+
     [Header("Movement Settings")]
     public float moveSpeed = 5.0f; // Faster walking speed (5.0f)
     public float runSpeed = 8.5f;  // Faster running speed (8.5f)
@@ -88,10 +90,18 @@ public class FirstPersonController : MonoBehaviourPun
     private float cameraAimBlend = 0f;
 
     [Header("Checkpoint System")]
-    public float deathYThreshold = -15f;
+    public float deathYThreshold = -100f;
     private Vector3 activeCheckpointPosition;
 
+<<<<<<< HEAD
     public static System.Action<Vector3> OnLocalPlayerRespawn;
+=======
+    [Header("Fall Damage Settings")]
+    [Tooltip("How long the player must be in the air (in seconds) to die from falling.")]
+    public float fallDeathAirTimeThreshold = 1.0f;
+    private float airTimeCounter = 0f;
+    private bool hitGroundThisFrame = false;
+>>>>>>> parent of 045e7e6 (Merge branch 'Howard' into NelsenBranch)
 
     // Camera shake fields
     private Vector3 cameraShakeOffset = Vector3.zero;
@@ -104,27 +114,126 @@ public class FirstPersonController : MonoBehaviourPun
     private GameObject deathOverlayObj;
     private UnityEngine.UI.Text deathClicksText;
     private UnityEngine.UI.Image deathProgressBarFill;
- 
-    // Bandage Overlay Settings
-    private struct BandageConfig
-    {
-        public string name;
-        public Vector2 position;
-        public Vector2 size;
-        public float rotation;
-        public float slideDirection; // 1 for forward along rotation axis, -1 for backward
-    }
-    private GameObject bandageCanvasObj;
-    private System.Collections.Generic.List<RectTransform> bandageWraps = new System.Collections.Generic.List<RectTransform>();
-    private System.Collections.Generic.List<Vector2> startPositions = new System.Collections.Generic.List<Vector2>();
-    private System.Collections.Generic.List<Vector2> targetPositions = new System.Collections.Generic.List<Vector2>();
-    private bool bandageActive = false;
-    private Coroutine bandageAnimCoroutine;
+
+    // Disability Settings
+    private bool isBlind = false;
+    private bool isDeaf = false;
+    private GameObject blindOverlayObj;
+
 
     // Vault wall IK
     private Vector3 vaultWallContactPoint;
     private float vaultExitBlend = 0f;
     private float vaultExitDuration = 0.25f;
+
+    [Header("Input System")]
+    [SerializeField] private InputReader inputReader;
+
+    private Vector2 moveInput;
+    private Vector2 lookInput;
+    private bool sprintInputPressed;
+    private bool jumpInputPressed;
+    private bool aimInputPressed;
+    private bool throwInputPressed;
+    // Inputs are handled and blocked inside the InputReader ScriptableObject
+
+    private void OnEnable()
+    {
+#if UNITY_EDITOR
+        if (inputReader == null)
+        {
+            string[] guids = UnityEditor.AssetDatabase.FindAssets("t:InputReader");
+            if (guids != null && guids.Length > 0)
+            {
+                string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
+                inputReader = UnityEditor.AssetDatabase.LoadAssetAtPath<InputReader>(path);
+            }
+        }
+#endif
+        if (inputReader == null)
+        {
+            InputReader[] readers = Resources.FindObjectsOfTypeAll<InputReader>();
+            if (readers != null && readers.Length > 0)
+            {
+                inputReader = readers[0];
+            }
+        }
+
+        if (inputReader != null)
+        {
+            inputReader.OnWalk += HandleWalk;
+            inputReader.OnLook += HandleLook;
+            inputReader.OnJump += HandleJump;
+            inputReader.OnSprint += HandleSprint;
+            inputReader.OnSprintCanceled += HandleSprintCanceled;
+            inputReader.OnAim += HandleAim;
+            inputReader.OnAimCanceled += HandleAimCanceled;
+            inputReader.OnThrow += HandleThrow;
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (inputReader != null)
+        {
+            inputReader.OnWalk -= HandleWalk;
+            inputReader.OnLook -= HandleLook;
+            inputReader.OnJump -= HandleJump;
+            inputReader.OnSprint -= HandleSprint;
+            inputReader.OnSprintCanceled -= HandleSprintCanceled;
+            inputReader.OnAim -= HandleAim;
+            inputReader.OnAimCanceled -= HandleAimCanceled;
+            inputReader.OnThrow -= HandleThrow;
+        }
+    }
+
+    private void HandleWalk(Vector2 value)
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        moveInput = value;
+    }
+
+    private void HandleLook(Vector2 value)
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        lookInput = value;
+    }
+
+    private void HandleJump()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        jumpInputPressed = true;
+    }
+
+    private void HandleSprint()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        sprintInputPressed = true;
+    }
+
+    private void HandleSprintCanceled()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        sprintInputPressed = false;
+    }
+
+    private void HandleAim()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        aimInputPressed = true;
+    }
+
+    private void HandleAimCanceled()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        aimInputPressed = false;
+    }
+
+    private void HandleThrow()
+    {
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        throwInputPressed = true;
+    }
 
     void Start()
     {
@@ -246,15 +355,13 @@ public class FirstPersonController : MonoBehaviourPun
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
 
-        if (Input.GetKeyDown(KeyCode.B) && !isDead)
-        {
-            ToggleBandageOverlay();
-        }
+        hitGroundThisFrame = false;
 
         if (isDead)
         {
-            if (Input.GetMouseButtonDown(0))
+            if (throwInputPressed)
             {
+                throwInputPressed = false; // Consume click
                 clickCountToRespawn++;
                 TriggerCameraShake(0.12f, 0.15f); // slight shake feedback on click
                 UpdateDeathUI();
@@ -279,12 +386,18 @@ public class FirstPersonController : MonoBehaviourPun
                 }
                 playerCamera.transform.rotation = Quaternion.Euler(pitch, transform.eulerAngles.y, 0f);
             }
+            
+            // Clear unconsumed inputs
+            jumpInputPressed = false;
+            throwInputPressed = false;
+            lookInput = Vector2.zero;
             return;
         }
 
         // 1. Camera Look Rotation
-        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
-        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+        // Scale delta input by 0.05f to match legacy mouse sensitivity feel
+        float mouseX = lookInput.x * mouseSensitivity * 0.05f;
+        float mouseY = lookInput.y * mouseSensitivity * 0.05f;
 
         // Rotate player body horizontally via mouse look
         transform.Rotate(Vector3.up * mouseX);
@@ -340,15 +453,20 @@ public class FirstPersonController : MonoBehaviourPun
                 animator.SetBool("IsGrounded", false);
                 animator.SetBool("OnGround", false);
             }
+            
+            // Clear unconsumed inputs
+            jumpInputPressed = false;
+            throwInputPressed = false;
+            lookInput = Vector2.zero;
             return;
         }
 
         // 2. Player Movement
-        float moveHorizontal = Input.GetAxisRaw("Horizontal"); // Changed from GetAxis to GetAxisRaw for instant stopping response
-        float moveVertical = Input.GetAxisRaw("Vertical");     // Changed from GetAxis to GetAxisRaw for instant stopping response
+        float moveHorizontal = moveInput.x;
+        float moveVertical = moveInput.y;
 
         // Determine if running (holding Shift and moving forward)
-        bool isRunning = (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && (Input.GetKey(KeyCode.W) || moveVertical > 0.1f);
+        bool isRunning = sprintInputPressed && (moveVertical > 0.1f);
         float currentSpeed = isRunning ? runSpeed : moveSpeed;
 
         Vector3 inputDir = transform.right * moveHorizontal + transform.forward * moveVertical;
@@ -363,8 +481,9 @@ public class FirstPersonController : MonoBehaviourPun
                 verticalVelocity = -2f; 
             }
 
-            if (Input.GetButtonDown("Jump"))
+            if (jumpInputPressed)
             {
+                jumpInputPressed = false; // Consume jump
                 float obstacleHeight;
                 if (CheckVault(out vaultStartPos, out vaultTargetPos, out obstacleHeight))
                 {
@@ -389,6 +508,28 @@ public class FirstPersonController : MonoBehaviourPun
         // Move character controller
         controller.Move(move * Time.deltaTime);
 
+        // Update air time counter and handle death on landing
+        if (controller.isGrounded)
+        {
+            if (airTimeCounter > 0.05f)
+            {
+                Debug.Log($"Landed! Air time accumulated: {airTimeCounter:F2} seconds. Required threshold: {fallDeathAirTimeThreshold:F2} seconds.");
+            }
+            if (airTimeCounter >= fallDeathAirTimeThreshold && !isDead && !isVaulting)
+            {
+                Debug.Log($"Player died from fall damage on landing. Air time: {airTimeCounter:F2} seconds");
+                Respawn();
+            }
+            airTimeCounter = 0f;
+        }
+        else
+        {
+            if (!isDead && !isVaulting)
+            {
+                airTimeCounter += Time.deltaTime;
+            }
+        }
+
         // 3. Update Animator
         if (animator != null && animator.enabled)
         {
@@ -410,6 +551,11 @@ public class FirstPersonController : MonoBehaviourPun
         }
 
         UpdateAimingAndTrajectory();
+
+        // Clear triggers and reset mouse look delta at the end of the frame
+        jumpInputPressed = false;
+        throwInputPressed = false;
+        lookInput = Vector2.zero;
     }
 
     void LateUpdate()
@@ -551,6 +697,8 @@ public class FirstPersonController : MonoBehaviourPun
             {
                 isVaulting = false;
                 if (controller != null) controller.enabled = true;
+                verticalVelocity = -2f; // Reset vertical velocity upon ending vault
+                airTimeCounter = 0f;   // Reset air time counter upon ending vault
             }
 
             if (!isVaulting && vaultExitBlend <= 0f)
@@ -613,6 +761,8 @@ public class FirstPersonController : MonoBehaviourPun
     public void StartVaultRPC(Vector3 startPos, Vector3 targetPos, float duration, float peakHeight)
     {
         isVaulting = true;
+        verticalVelocity = 0f; // Reset vertical velocity upon starting vault
+        airTimeCounter = 0f;   // Reset air time counter upon starting vault
         vaultTimer = 0f;
         vaultStartPos = startPos;
         vaultTargetPos = targetPos;
@@ -793,7 +943,7 @@ public class FirstPersonController : MonoBehaviourPun
     private void UpdateAimingAndTrajectory()
     {
         // Aiming Logic (Hold Right-Click) - only active if not currently throwing
-        if (Input.GetMouseButton(1) && !isThrowingAnim && (!PhotonNetwork.IsConnected || photonView.IsMine))
+        if (aimInputPressed && !isThrowingAnim && (!PhotonNetwork.IsConnected || photonView.IsMine))
         {
             isAiming = true;
             if (trajectoryLine != null) trajectoryLine.enabled = true;
@@ -873,8 +1023,9 @@ public class FirstPersonController : MonoBehaviourPun
             }
 
             // Throw Logic (Left-Click while aiming)
-            if (Input.GetMouseButtonDown(0))
+            if (throwInputPressed)
             {
+                throwInputPressed = false; // Consume throw
                 ThrowObject(throwOrigin, throwVelocity);
             }
         }
@@ -1010,6 +1161,12 @@ public class FirstPersonController : MonoBehaviourPun
         // Handle solid physical checkpoints and death zones
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
 
+        // Grounding detection: Only if hitting a surface pointing upwards (ground)
+        if (hit.normal.y > 0.7f) // slope angle <= 45 degrees
+        {
+            hitGroundThisFrame = true;
+        }
+
         if (CompareSafeTag(hit.collider, "Checkpoint"))
         {
             // Try to find a custom designated spawn point child, otherwise use the player's exact contact position
@@ -1041,7 +1198,16 @@ public class FirstPersonController : MonoBehaviourPun
         if (!isDead)
         {
             isDead = true;
+            airTimeCounter = 0f; // Reset ground timer immediately on death
             clickCountToRespawn = 0;
+
+            // Make sure inputs are not disabled when entering the dead state
+            if (inputReader != null)
+            {
+                inputReader.SetInputsDisabled(false);
+                inputReader.SetInputsDisabledExceptLook(false);
+                inputReader.SetInputsDisabledExceptInteract(false);
+            }
             
             // Reset the giant to spawn position!
             var giant = FindObjectOfType<GiantPharaohAI>();
@@ -1081,6 +1247,7 @@ public class FirstPersonController : MonoBehaviourPun
 
         transform.position = activeCheckpointPosition;
         verticalVelocity = 0f;
+        airTimeCounter = 0f;
 
         if (controller != null)
         {
@@ -1089,6 +1256,17 @@ public class FirstPersonController : MonoBehaviourPun
 
         isDead = false;
 
+<<<<<<< HEAD
+=======
+        // Restore control states upon respawn
+        if (inputReader != null)
+        {
+            inputReader.SetInputsDisabled(false);
+            inputReader.SetInputsDisabledExceptLook(false);
+            inputReader.SetInputsDisabledExceptInteract(false);
+        }
+
+>>>>>>> parent of 045e7e6 (Merge branch 'Howard' into NelsenBranch)
         OnLocalPlayerRespawn?.Invoke(activeCheckpointPosition);
     }
 
@@ -1125,7 +1303,7 @@ public class FirstPersonController : MonoBehaviourPun
         GameObject titleObj = new GameObject("TitleText");
         titleObj.transform.SetParent(panelObj.transform, false);
         var titleText = titleObj.AddComponent<UnityEngine.UI.Text>();
-        titleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        titleText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         titleText.text = "YOU DIED";
         titleText.fontSize = 90;
         titleText.alignment = TextAnchor.MiddleCenter;
@@ -1146,7 +1324,7 @@ public class FirstPersonController : MonoBehaviourPun
         GameObject subObj = new GameObject("SubtitleText");
         subObj.transform.SetParent(panelObj.transform, false);
         var subText = subObj.AddComponent<UnityEngine.UI.Text>();
-        subText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        subText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         subText.text = "Spam Left Click to Respawn!";
         subText.fontSize = 35;
         subText.alignment = TextAnchor.MiddleCenter;
@@ -1162,7 +1340,7 @@ public class FirstPersonController : MonoBehaviourPun
         GameObject progressTextObj = new GameObject("ProgressText");
         progressTextObj.transform.SetParent(panelObj.transform, false);
         deathClicksText = progressTextObj.AddComponent<UnityEngine.UI.Text>();
-        deathClicksText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        deathClicksText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         deathClicksText.text = "Clicks: 0 / " + requiredClicksForRespawn;
         deathClicksText.fontSize = 28;
         deathClicksText.alignment = TextAnchor.MiddleCenter;
@@ -1239,248 +1417,5 @@ public class FirstPersonController : MonoBehaviourPun
             yield return null;
         }
         cameraShakeOffset = Vector3.zero;
-    }
-
-    private void ToggleBandageOverlay()
-    {
-        if (bandageCanvasObj == null)
-        {
-            CreateBandageUI();
-        }
-
-        bandageActive = !bandageActive;
-
-        if (bandageAnimCoroutine != null)
-        {
-            StopCoroutine(bandageAnimCoroutine);
-        }
-        bandageAnimCoroutine = StartCoroutine(AnimateBandages(bandageActive));
-    }
-
-    private void CreateBandageUI()
-    {
-        if (bandageCanvasObj != null) return;
-
-        // Try to find BandageOverlayCanvas in the local hierarchy first
-        Transform canvasTransform = transform.Find("BandageOverlayCanvas");
-        if (canvasTransform == null)
-        {
-            canvasTransform = FindDeepChild(transform, "BandageOverlayCanvas");
-        }
-
-        if (canvasTransform != null)
-        {
-            bandageCanvasObj = canvasTransform.gameObject;
-            
-            // Clear list data
-            bandageWraps.Clear();
-            startPositions.Clear();
-            targetPositions.Clear();
-
-            // Find Container child (fallback to canvas root if missing)
-            Transform container = canvasTransform.Find("Container");
-            if (container == null) container = canvasTransform;
-
-            // Cache child bandage strips
-            foreach (Transform child in container)
-            {
-                RectTransform rect = child.GetComponent<RectTransform>();
-                if (rect != null)
-                {
-                    MummyBandageStrip strip = child.GetComponent<MummyBandageStrip>();
-                    if (strip == null)
-                    {
-                        strip = child.gameObject.AddComponent<MummyBandageStrip>();
-                    }
-
-                    // Cache target position and rotation from the hierarchy design
-                    Vector2 targetPos = rect.anchoredPosition;
-                    float rotation = rect.localRotation.eulerAngles.z;
-
-                    // Calculate slide starting position along the rotation axis
-                    float rad = rotation * Mathf.Deg2Rad;
-                    Vector2 dir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
-                    Vector2 offset = dir * (3600f * strip.slideDirection);
-                    Vector2 startPos = targetPos + offset;
-
-                    bandageWraps.Add(rect);
-                    startPositions.Add(startPos);
-                    targetPositions.Add(targetPos);
-
-                    // Set initial state to starting position
-                    rect.anchoredPosition = startPos;
-                }
-            }
-
-            // Hide canvas initially
-            bandageCanvasObj.SetActive(false);
-            return;
-        }
-
-        // Fallback: Create Canvas GameObject programmatically if missing from hierarchy
-        bandageCanvasObj = new GameObject("BandageOverlayCanvas");
-        Canvas canvas = bandageCanvasObj.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 998; // Just under Death UI
-        
-        // Add CanvasScaler
-        var scaler = bandageCanvasObj.AddComponent<UnityEngine.UI.CanvasScaler>();
-        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920, 1080);
-        
-        // Add GraphicRaycaster (non-blocking for gameplay)
-        bandageCanvasObj.AddComponent<UnityEngine.UI.GraphicRaycaster>();
-
-        // Create container panel
-        GameObject containerObj = new GameObject("Container");
-        containerObj.transform.SetParent(bandageCanvasObj.transform, false);
-        var rectContainer = containerObj.AddComponent<RectTransform>();
-        rectContainer.anchorMin = Vector2.zero;
-        rectContainer.anchorMax = Vector2.one;
-        rectContainer.sizeDelta = Vector2.zero;
-
-        // Clear list data
-        bandageWraps.Clear();
-        startPositions.Clear();
-        targetPositions.Clear();
-
-        // Configure 7 medium-large messy horizontal-ish wraps spanning edge-to-edge (X = 0f, Width = 3400f)
-        var configs = new System.Collections.Generic.List<BandageConfig>
-        {
-            new BandageConfig { name = "A1", position = new Vector2(0f, 380f), size = new Vector2(3400f, 180f), rotation = 8f, slideDirection = -1f },
-            new BandageConfig { name = "A2", position = new Vector2(0f, -380f), size = new Vector2(3400f, 180f), rotation = -6f, slideDirection = 1f },
-            new BandageConfig { name = "A3", position = new Vector2(0f, 200f), size = new Vector2(3400f, 150f), rotation = -9f, slideDirection = -1f },
-            new BandageConfig { name = "A4", position = new Vector2(0f, -200f), size = new Vector2(3400f, 150f), rotation = 7f, slideDirection = 1f },
-            new BandageConfig { name = "A5", position = new Vector2(0f, 0f), size = new Vector2(3400f, 140f), rotation = -3f, slideDirection = -1f },
-
-            // Diagonals crossing over to create abstract scattered peepholes
-            new BandageConfig { name = "A6", position = new Vector2(0f, 90f), size = new Vector2(3400f, 130f), rotation = -15f, slideDirection = 1f },
-            new BandageConfig { name = "A7", position = new Vector2(0f, -90f), size = new Vector2(3400f, 130f), rotation = 16f, slideDirection = -1f }
-        };
-
-        foreach (var cfg in configs)
-        {
-            // Calculate direction vector along the rotated axis
-            float rad = cfg.rotation * Mathf.Deg2Rad;
-            Vector2 dir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
-            Vector2 offset = dir * (3600f * cfg.slideDirection); // Larger offset to hide 3400px wide strips completely
-            Vector2 startPos = cfg.position + offset;
-
-            RectTransform rect = CreateBandageStrip(cfg.name, containerObj.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), startPos, cfg.size, cfg.rotation);
-            
-            bandageWraps.Add(rect);
-            startPositions.Add(startPos);
-            targetPositions.Add(cfg.position);
-        }
-
-        // Hide canvas initially
-        bandageCanvasObj.SetActive(false);
-    }
-
-    private RectTransform CreateBandageStrip(string name, Transform parent, Vector2 anchor, Vector2 pivot, Vector2 startPos, Vector2 size, float rotation)
-    {
-        // 1. Root GameObject
-        GameObject stripObj = new GameObject(name);
-        stripObj.transform.SetParent(parent, false);
-        RectTransform rect = stripObj.AddComponent<RectTransform>();
-        rect.anchorMin = anchor;
-        rect.anchorMax = anchor;
-        rect.pivot = pivot;
-        rect.anchoredPosition = startPos;
-        rect.sizeDelta = size;
-        rect.localRotation = Quaternion.Euler(0f, 0f, rotation);
-
-        // Layer 1: Dark sandy shadow/outline
-        var bgImage = stripObj.AddComponent<UnityEngine.UI.Image>();
-        bgImage.color = new Color(0.42f, 0.35f, 0.28f, 0.95f);
-
-        // Layer 2: Main bandage wrap (Beige)
-        GameObject mainObj = new GameObject("MainWrap");
-        mainObj.transform.SetParent(stripObj.transform, false);
-        var rectMain = mainObj.AddComponent<RectTransform>();
-        rectMain.anchorMin = Vector2.zero;
-        rectMain.anchorMax = Vector2.one;
-        rectMain.sizeDelta = new Vector2(0f, -12f); // margin top/bottom
-        var mainImage = mainObj.AddComponent<UnityEngine.UI.Image>();
-        mainImage.color = new Color(0.84f, 0.77f, 0.68f, 1f);
-
-        // Layer 3: Highlight fold (Lighter cream)
-        GameObject highlightObj = new GameObject("HighlightFold");
-        highlightObj.transform.SetParent(mainObj.transform, false);
-        var rectHighlight = highlightObj.AddComponent<RectTransform>();
-        rectHighlight.anchorMin = new Vector2(0f, 0.15f);
-        rectHighlight.anchorMax = new Vector2(1f, 0.35f);
-        rectHighlight.sizeDelta = Vector2.zero;
-        var highlightImage = highlightObj.AddComponent<UnityEngine.UI.Image>();
-        highlightImage.color = new Color(0.92f, 0.87f, 0.81f, 1f);
-
-        // Layer 4: Overlapping secondary strip for textured look (Darker beige)
-        GameObject overlapObj = new GameObject("OverlapStrip");
-        overlapObj.transform.SetParent(mainObj.transform, false);
-        var rectOverlap = overlapObj.AddComponent<RectTransform>();
-        rectOverlap.anchorMin = new Vector2(0f, 0.5f);
-        rectOverlap.anchorMax = new Vector2(1f, 0.95f);
-        rectOverlap.sizeDelta = Vector2.zero;
-        rectOverlap.localRotation = Quaternion.Euler(0f, 0f, -0.8f);
-        var overlapImage = overlapObj.AddComponent<UnityEngine.UI.Image>();
-        overlapImage.color = new Color(0.80f, 0.73f, 0.64f, 1f);
-
-        return rect;
-    }
-
-    private System.Collections.IEnumerator AnimateBandages(bool targetActive)
-    {
-        float duration = targetActive ? 2.5f : 0.85f; // Slower, more dramatic crawl on entry, default on exit
-        float elapsed = 0f;
-
-        var currentStartPos = new System.Collections.Generic.List<Vector2>();
-        foreach (var wrap in bandageWraps)
-        {
-            currentStartPos.Add(wrap.anchoredPosition);
-        }
-
-        if (targetActive && bandageCanvasObj != null)
-        {
-            bandageCanvasObj.SetActive(true);
-        }
-
-        while (elapsed < duration)
-        {
-            elapsed += Time.deltaTime;
-            float t = elapsed / duration;
-            float easeT = Mathf.SmoothStep(0f, 1f, t);
-
-            for (int i = 0; i < bandageWraps.Count; i++)
-            {
-                Vector2 target = targetActive ? targetPositions[i] : startPositions[i];
-                Vector2 basePos = Vector2.Lerp(currentStartPos[i], target, easeT);
-
-                // Add trembling shake when wrapping onto player's face
-                if (targetActive)
-                {
-                    // Trembling shake fades out as easeT goes to 1.0 (snug wrap)
-                    float shakeStrength = (1f - easeT) * 15f;
-                    float freq = 60f;
-                    float shakeX = Mathf.Sin(elapsed * freq + i * 7f) * shakeStrength + UnityEngine.Random.Range(-shakeStrength * 0.3f, shakeStrength * 0.3f);
-                    float shakeY = Mathf.Cos(elapsed * freq * 0.9f + i * 3f) * shakeStrength + UnityEngine.Random.Range(-shakeStrength * 0.3f, shakeStrength * 0.3f);
-                    
-                    basePos += new Vector2(shakeX, shakeY);
-                }
-
-                bandageWraps[i].anchoredPosition = basePos;
-            }
-
-            yield return null;
-        }
-
-        for (int i = 0; i < bandageWraps.Count; i++)
-        {
-            bandageWraps[i].anchoredPosition = targetActive ? targetPositions[i] : startPositions[i];
-        }
-
-        if (!targetActive && bandageCanvasObj != null)
-        {
-            bandageCanvasObj.SetActive(false);
-        }
     }
 }

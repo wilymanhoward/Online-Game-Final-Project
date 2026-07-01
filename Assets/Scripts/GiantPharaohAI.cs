@@ -3,7 +3,7 @@ using System.Collections;
 
 public class GiantPharaohAI : MonoBehaviour
 {
-    public enum AIState { Chasing, Attacking, Cooldown, Fallen }
+    public enum AIState { Chasing, Attacking, Cooldown }
     public AIState currentState = AIState.Chasing;
 
     [Header("Movement")]
@@ -23,10 +23,6 @@ public class GiantPharaohAI : MonoBehaviour
     public float stompThighLiftAngle = -85f;
     [Tooltip("How many degrees the knee bends during stomp")]
     public float stompKneeBendAngle = 80f;
-
-    [Header("Knockdown Settings")]
-    [Tooltip("Local Y offset applied to the Root bone when fallen to keep the body flush with the ground")]
-    public float fallenYOffset = -0.15f;
 
     [Header("Visual References")]
     public ParticleSystem stompParticles;  // Optional dust particle effect on stomp
@@ -63,17 +59,10 @@ public class GiantPharaohAI : MonoBehaviour
     private Vector3 spawnPosition;
     private Quaternion spawnRotation;
 
-    private Transform rootBoneTransform;
-    private float fallenProgress = 0f;
-    private Coroutine knockdownCoroutine;
-    private float proceduralBlendWeight = 1f;
-    private float footstepTimer = 0f;
-
     void Start()
     {
         spawnPosition = transform.position;
         spawnRotation = transform.rotation;
-        rootBoneTransform = transform.Find("Root");
 
         controller = GetComponent<CharacterController>();
         animator = GetComponent<Animator>();
@@ -152,9 +141,9 @@ public class GiantPharaohAI : MonoBehaviour
                 {
                     GameObject stickInstance = Instantiate(stickPrefab, handR);
                     stickInstance.name = "Giant Stick";
-                    stickInstance.transform.localPosition = new Vector3(0.079f, 0.035f, 1.008f);
-                    stickInstance.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
-                    stickInstance.transform.localScale = new Vector3(0.4f, 0.44161072f, 0.23355705f);
+                    stickInstance.transform.localPosition = new Vector3(0f, -1.0f, 0f);
+                    stickInstance.transform.localRotation = Quaternion.Euler(180f, 0f, 0f);
+                    stickInstance.transform.localScale = new Vector3(2.98f, 3.29f, 1.74f);
                 }
                 else
                 {
@@ -177,11 +166,7 @@ public class GiantPharaohAI : MonoBehaviour
         yield return null;
 
         if (rightThigh != null) baseThighRot = rightThigh.localRotation;
-        if (rightKnee != null)
-        {
-            baseKneeRot = rightKnee.localRotation;
-            smoothKneeTuckedY = baseKneeRot.eulerAngles.y;
-        }
+        if (rightKnee  != null) baseKneeRot  = rightKnee.localRotation;
         if (headBone   != null) baseHeadRot  = headBone.localRotation;
         if (spine01    != null) baseSpineRot = spine01.localRotation;
         baseRotCaptured = true;
@@ -189,16 +174,6 @@ public class GiantPharaohAI : MonoBehaviour
 
     void Update()
     {
-        // Interpolate procedural blend weight (blend out during Fallen, blend in during Chasing/idle)
-        if (currentState == AIState.Fallen)
-        {
-            proceduralBlendWeight = 0f;
-        }
-        else
-        {
-            proceduralBlendWeight = Mathf.MoveTowards(proceduralBlendWeight, 1f, Time.deltaTime / 1.5f);
-        }
-
         Vector3 finalMove = Vector3.zero;
 
         // Apply gravity
@@ -251,38 +226,6 @@ public class GiantPharaohAI : MonoBehaviour
                     currentState = AIState.Chasing;
                 }
                 break;
-
-            case AIState.Fallen:
-                // Force speed to 0 so he doesn't play walk cycle on the ground
-                if (animator != null) animator.SetFloat("Speed", 0f);
-                finalMove = Vector3.zero;
-                break;
-        }
-
-        // Footstep screen shake for massive giant locomotion
-        if (currentState == AIState.Chasing && finalMove.sqrMagnitude > 0.1f)
-        {
-            footstepTimer += Time.deltaTime;
-            if (footstepTimer >= 0.55f)
-            {
-                // Play subtle camera shake on nearby players
-                FirstPersonController[] players = FindObjectsOfType<FirstPersonController>();
-                foreach (var player in players)
-                {
-                    float distance = Vector3.Distance(transform.position, player.transform.position);
-                    if (distance < 35.0f)
-                    {
-                        float factor = 1.0f - (distance / 35.0f);
-                        float intensity = 0.08f * factor; // Very subtle shake (max 0.08)
-                        player.TriggerCameraShake(0.18f, intensity);
-                    }
-                }
-                footstepTimer = 0f;
-            }
-        }
-        else
-        {
-            footstepTimer = 0f;
         }
 
         // Add gravity to final movement vector
@@ -297,50 +240,6 @@ public class GiantPharaohAI : MonoBehaviour
 
     void LateUpdate()
     {
-        if (currentState == AIState.Fallen)
-        {
-            if (rootBoneTransform != null)
-            {
-                bool isFallenInAnimator = animator != null && animator.GetBool("IsFallen");
-                if (isFallenInAnimator)
-                {
-                    // Smoothly lower the visual rig to prevent floating while laying flat on back
-                    rootBoneTransform.localPosition = Vector3.Lerp(rootBoneTransform.localPosition, new Vector3(0f, fallenYOffset, 0f), 10f * Time.deltaTime);
-                }
-                else
-                {
-                    // Smoothly return rig back to default vertical alignment while getting up
-                    rootBoneTransform.localPosition = Vector3.Lerp(rootBoneTransform.localPosition, Vector3.zero, 4f * Time.deltaTime);
-                }
-            }
-
-            // Keep the right hand gripping the stick strongly during knockdown and stand-up animations
-            if (baseRotCaptured && rightHand != null)
-            {
-                foreach (var finger in rightFingers)
-                {
-                    if (finger.name.Contains("Thumb"))
-                    {
-                        finger.localRotation = finger.localRotation * Quaternion.Euler(0f, 0f, 35f);
-                    }
-                    else
-                    {
-                        finger.localRotation = finger.localRotation * Quaternion.Euler(0f, 0f, 55f);
-                    }
-                }
-            }
-
-            return; // Bypass all other IK overrides during knockdown, let Animator play FBX clip cleanly
-        }
-        else
-        {
-            if (rootBoneTransform != null)
-            {
-                // Smoothly continue to Lerp Y back to zero if it was offset (rather than snapping instantly)
-                rootBoneTransform.localPosition = Vector3.Lerp(rootBoneTransform.localPosition, Vector3.zero, 6f * Time.deltaTime);
-            }
-        }
-
         // Override Animator every frame during stomp
         if (currentState == AIState.Attacking && isStomping)
         {
@@ -358,9 +257,7 @@ public class GiantPharaohAI : MonoBehaviour
             // Map distance 1.5m to 6.5m to a 0.0 to 1.0 fraction
             float t_dist = Mathf.Clamp01((d - 1.5f) / 5.0f);
 
-            float straightKneeY = baseKneeRot.eulerAngles.y;
-            float tuckedKneeY = straightKneeY + 50f;
-            float kneeTuckedY = Mathf.Lerp(tuckedKneeY, straightKneeY, t_dist);
+            float kneeTuckedY = Mathf.Lerp(245f, 152f, t_dist);
 
             // Smooth the raw targets over time to eliminate jitter from player movements
             smoothKneeTuckedY = Mathf.Lerp(smoothKneeTuckedY, kneeTuckedY, 12f * Time.deltaTime);
@@ -374,6 +271,9 @@ public class GiantPharaohAI : MonoBehaviour
             Quaternion targetThighPeakRot = Quaternion.Slerp(baseThighRot, targetRaisedThighRot, maxThighLiftWeight);
 
             // --- LOWER LEG (LowerLeg_R) ---
+            const float kneeIdleY  = 152f;
+            const float kneeStampY = 152f; // foot straight on landing
+
             Quaternion targetThighRot;
             float targetKneeY;
 
@@ -383,7 +283,7 @@ public class GiantPharaohAI : MonoBehaviour
                 float t     = stompProgress / 0.5f;
                 float easeT = Mathf.SmoothStep(0f, 1f, t);
                 targetThighRot = Quaternion.Slerp(baseThighRot, targetThighPeakRot, easeT);
-                targetKneeY  = Mathf.Lerp(straightKneeY,   smoothKneeTuckedY, easeT);
+                targetKneeY  = Mathf.Lerp(kneeIdleY,   smoothKneeTuckedY, easeT);
             }
             else
             {
@@ -391,7 +291,7 @@ public class GiantPharaohAI : MonoBehaviour
                 float t      = (stompProgress - 0.5f) / 0.5f;
                 float easeT  = t * t * t;  // cubic = starts very slow and accelerates to fast
                 targetThighRot = Quaternion.Slerp(targetThighPeakRot, baseThighRot, easeT);
-                targetKneeY  = Mathf.Lerp(smoothKneeTuckedY, straightKneeY, easeT);
+                targetKneeY  = Mathf.Lerp(smoothKneeTuckedY, kneeStampY, easeT);
             }
 
             // Capture the Animator's natural rotations before we override them
@@ -485,8 +385,7 @@ public class GiantPharaohAI : MonoBehaviour
                     targetLookDownAngle = Mathf.Clamp(targetLookDownAngle, 0f, 65f);
                     
                     // Rotate the head on X axis to look down
-                    Quaternion targetHeadRot = baseHeadRot * Quaternion.Euler(targetLookDownAngle, 0f, 0f);
-                    headBone.localRotation = Quaternion.Slerp(headBone.localRotation, targetHeadRot, proceduralBlendWeight);
+                    headBone.localRotation = baseHeadRot * Quaternion.Euler(targetLookDownAngle, 0f, 0f);
                 }
             }
         }
@@ -496,10 +395,9 @@ public class GiantPharaohAI : MonoBehaviour
         {
             // Keep arm and hand rotations close to their natural idle/walk, 
             // bending the elbow forward by 80 degrees and keeping the wrist straight.
-            // We smoothly blend this procedural pose using proceduralBlendWeight to prevent snapping.
-            rightShoulder.localRotation = Quaternion.Slerp(rightShoulder.localRotation, Quaternion.Euler(11.33f, 33.18f, 55.00f), proceduralBlendWeight);
-            rightElbow.localRotation    = Quaternion.Slerp(rightElbow.localRotation, Quaternion.Euler(344.98f, 80.00f, 357.57f), proceduralBlendWeight);
-            rightHand.localRotation     = Quaternion.Slerp(rightHand.localRotation, Quaternion.Euler(344.70f, 351.57f, 356.31f), proceduralBlendWeight);
+            rightShoulder.localRotation = Quaternion.Euler(11.33f, 33.18f, 55.00f);
+            rightElbow.localRotation    = Quaternion.Euler(344.98f, 80.00f, 357.57f);
+            rightHand.localRotation     = Quaternion.Euler(344.70f, 351.57f, 356.31f);
 
             // Procedurally curl fingers to grip the stick strongly
             foreach (var finger in rightFingers)
@@ -772,88 +670,19 @@ public class GiantPharaohAI : MonoBehaviour
             controller.enabled = true;
         }
 
-        // Stop any active knockdown sequence
-        if (knockdownCoroutine != null)
-        {
-            StopCoroutine(knockdownCoroutine);
-            knockdownCoroutine = null;
-        }
-        
-        fallenProgress = 0f;
-
-        // Reset animator parameters
-        if (animator != null)
-        {
-            animator.SetBool("IsFallen", false);
-            animator.SetFloat("Speed", 0f);
-            animator.Play("Idle", 0, 0f);
-        }
-
         // Reset AI state so he doesn't keep attacking or stomping instantly
         currentState = AIState.Chasing;
         cooldownTimer = 1.0f; // brief delay before chasing again
         currentAttackTarget = null;
         isStomping = false;
         stompProgress = 0f;
-    }
 
-    public void Knockdown()
-    {
-        if (currentState == AIState.Fallen) return;
-
-        // Stop any ongoing attack state
-        isStomping = false;
-        stompProgress = 0f;
-
-        proceduralBlendWeight = 0f;
-
-        currentState = AIState.Fallen;
-        if (knockdownCoroutine != null) StopCoroutine(knockdownCoroutine);
-        knockdownCoroutine = StartCoroutine(KnockdownSequence());
-    }
-
-    private IEnumerator KnockdownSequence()
-    {
-        if (controller != null)
-        {
-            controller.enabled = false;
-        }
-
+        // Reset animations
         if (animator != null)
         {
-            animator.SetBool("IsFallen", true);
+            animator.SetFloat("Speed", 0f);
+            animator.Play("Idle", 0, 0f);
         }
-
-        // Wait 4.0 seconds total (1.5s fall time + 2.5s lying flat on the ground)
-        yield return new WaitForSeconds(4.0f);
-
-        if (animator != null)
-        {
-            animator.SetBool("IsFallen", false);
-        }
-
-        // Wait 3.67 seconds for the Getting Up (1) animation to play completely
-        yield return new WaitForSeconds(3.67f);
-
-        // Snap to floor before re-enabling CharacterController to prevent floating/floor-clip
-        RaycastHit hit;
-        Vector3 rayStart = new Vector3(transform.position.x, transform.position.y + 3.0f, transform.position.z);
-        if (Physics.Raycast(rayStart, Vector3.down, out hit, 15.0f))
-        {
-            if (hit.collider != null && !hit.collider.isTrigger && !hit.collider.transform.IsChildOf(transform))
-            {
-                transform.position = new Vector3(transform.position.x, hit.point.y, transform.position.z);
-            }
-        }
-
-        if (controller != null)
-        {
-            controller.enabled = true;
-        }
-
-        // Resume chasing the player again immediately
-        currentState = AIState.Chasing;
-        cooldownTimer = 0f;
     }
 
     public bool IsStompingActive()

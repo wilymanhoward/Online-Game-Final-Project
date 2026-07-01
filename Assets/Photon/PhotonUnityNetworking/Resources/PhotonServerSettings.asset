@@ -41,7 +41,7 @@ MonoBehaviour:
   - RespawnSpaceship
   - StartVaultRPC
   - ReceiveVoiceData
-  - SyncPharaohKnockdown
+  - InteractRPC
   DisableAutoOpenWizard: 1
   ShowSettings: 0
   DevRegionSetOnce: 1
