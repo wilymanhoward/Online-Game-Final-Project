@@ -91,6 +91,8 @@ public class FirstPersonController : MonoBehaviourPun
     public float deathYThreshold = -15f;
     private Vector3 activeCheckpointPosition;
 
+    public static System.Action<Vector3> OnLocalPlayerRespawn;
+
     // Camera shake fields
     private Vector3 cameraShakeOffset = Vector3.zero;
 
@@ -1086,6 +1088,8 @@ public class FirstPersonController : MonoBehaviourPun
         }
 
         isDead = false;
+
+        OnLocalPlayerRespawn?.Invoke(activeCheckpointPosition);
     }
 
     private void CreateDeathUI()
