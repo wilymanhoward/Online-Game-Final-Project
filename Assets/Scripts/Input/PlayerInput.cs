@@ -167,6 +167,24 @@ public partial class @PlayerInput : IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""interactions"": """",
                     ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Aim"",
+                    ""type"": ""Button"",
+                    ""id"": ""3be55c48-2b82-4fcf-b6b8-6e542bf0954b"",
+                    ""expectedControlType"": ""Button"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Throw"",
+                    ""type"": ""Button"",
+                    ""id"": ""80b2a759-4674-4b53-91c6-2c5e533d3ab2"",
+                    ""expectedControlType"": ""Button"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
                 }
             ],
             ""bindings"": [
@@ -178,6 +196,28 @@ public partial class @PlayerInput : IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""groups"": """",
                     ""action"": ""Interact"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""9059f0f9-a2e6-4277-bf30-58079b76de34"",
+                    ""path"": ""<Mouse>/rightButton"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Aim"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""764b8bb2-53b4-4bcf-a87f-5a1bfdb2c021"",
+                    ""path"": ""<Mouse>/leftButton"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Throw"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
                 }
@@ -195,6 +235,8 @@ public partial class @PlayerInput : IInputActionCollection2, IDisposable
         // Interact
         m_Interact = asset.FindActionMap("Interact", throwIfNotFound: true);
         m_Interact_Interact = m_Interact.FindAction("Interact", throwIfNotFound: true);
+        m_Interact_Aim = m_Interact.FindAction("Aim", throwIfNotFound: true);
+        m_Interact_Throw = m_Interact.FindAction("Throw", throwIfNotFound: true);
     }
 
     public void Dispose()
@@ -312,11 +354,15 @@ public partial class @PlayerInput : IInputActionCollection2, IDisposable
     private readonly InputActionMap m_Interact;
     private IInteractActions m_InteractActionsCallbackInterface;
     private readonly InputAction m_Interact_Interact;
+    private readonly InputAction m_Interact_Aim;
+    private readonly InputAction m_Interact_Throw;
     public struct InteractActions
     {
         private @PlayerInput m_Wrapper;
         public InteractActions(@PlayerInput wrapper) { m_Wrapper = wrapper; }
         public InputAction @Interact => m_Wrapper.m_Interact_Interact;
+        public InputAction @Aim => m_Wrapper.m_Interact_Aim;
+        public InputAction @Throw => m_Wrapper.m_Interact_Throw;
         public InputActionMap Get() { return m_Wrapper.m_Interact; }
         public void Enable() { Get().Enable(); }
         public void Disable() { Get().Disable(); }
@@ -329,6 +375,12 @@ public partial class @PlayerInput : IInputActionCollection2, IDisposable
                 @Interact.started -= m_Wrapper.m_InteractActionsCallbackInterface.OnInteract;
                 @Interact.performed -= m_Wrapper.m_InteractActionsCallbackInterface.OnInteract;
                 @Interact.canceled -= m_Wrapper.m_InteractActionsCallbackInterface.OnInteract;
+                @Aim.started -= m_Wrapper.m_InteractActionsCallbackInterface.OnAim;
+                @Aim.performed -= m_Wrapper.m_InteractActionsCallbackInterface.OnAim;
+                @Aim.canceled -= m_Wrapper.m_InteractActionsCallbackInterface.OnAim;
+                @Throw.started -= m_Wrapper.m_InteractActionsCallbackInterface.OnThrow;
+                @Throw.performed -= m_Wrapper.m_InteractActionsCallbackInterface.OnThrow;
+                @Throw.canceled -= m_Wrapper.m_InteractActionsCallbackInterface.OnThrow;
             }
             m_Wrapper.m_InteractActionsCallbackInterface = instance;
             if (instance != null)
@@ -336,6 +388,12 @@ public partial class @PlayerInput : IInputActionCollection2, IDisposable
                 @Interact.started += instance.OnInteract;
                 @Interact.performed += instance.OnInteract;
                 @Interact.canceled += instance.OnInteract;
+                @Aim.started += instance.OnAim;
+                @Aim.performed += instance.OnAim;
+                @Aim.canceled += instance.OnAim;
+                @Throw.started += instance.OnThrow;
+                @Throw.performed += instance.OnThrow;
+                @Throw.canceled += instance.OnThrow;
             }
         }
     }
@@ -350,5 +408,7 @@ public partial class @PlayerInput : IInputActionCollection2, IDisposable
     public interface IInteractActions
     {
         void OnInteract(InputAction.CallbackContext context);
+        void OnAim(InputAction.CallbackContext context);
+        void OnThrow(InputAction.CallbackContext context);
     }
 }
