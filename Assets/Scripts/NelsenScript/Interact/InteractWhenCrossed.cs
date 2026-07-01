@@ -54,16 +54,6 @@ public class InteractWhenCrossed : MonoBehaviour
         }
     }
 
-    private void OnEnable()
-    {
-        FirstPersonController.OnLocalPlayerRespawn += HandleLocalPlayerRespawn;
-    }
-
-    private void OnDisable()
-    {
-        FirstPersonController.OnLocalPlayerRespawn -= HandleLocalPlayerRespawn;
-    }
-
     private void Update()
     {
         if (playersInside.Count > 0)
@@ -158,60 +148,6 @@ public class InteractWhenCrossed : MonoBehaviour
             if (multiplePeopleRequired && secondTrigger != null)
             {
                 secondTrigger.CheckDeactivation(playerTransform.gameObject);
-            }
-        }
-    }
-
-    private void HandleLocalPlayerRespawn(Vector3 respawnPosition)
-    {
-        bool removedAny = false;
-        GameObject localPlayerObj = null;
-        for (int i = playersInside.Count - 1; i >= 0; i--)
-        {
-            Transform tf = playersInside[i];
-            if (tf != null)
-            {
-                FirstPersonController fpc = tf.GetComponent<FirstPersonController>();
-                if (fpc != null)
-                {
-                    bool isLocal = true;
-                    var pv = fpc.GetComponent<Photon.Pun.PhotonView>();
-                    if (pv != null && !pv.IsMine)
-                    {
-                        isLocal = false;
-                    }
-
-                    if (isLocal)
-                    {
-                        localPlayerObj = tf.gameObject;
-                        playersInside.RemoveAt(i);
-                        
-                        if (physicalPlayersInside.Contains(tf))
-                        {
-                            physicalPlayersInside.Remove(tf);
-                        }
-
-                        Debug.Log($"[InteractWhenCrossed] Local player respawned. Removed from trigger {gameObject.name}.");
-                        if (multiplePeopleRequired && secondTrigger != null)
-                        {
-                            secondTrigger.playersInside.Remove(tf);
-                            if (secondTrigger.physicalPlayersInside.Contains(tf))
-                            {
-                                secondTrigger.physicalPlayersInside.Remove(tf);
-                            }
-                        }
-                        removedAny = true;
-                    }
-                }
-            }
-        }
-
-        if (removedAny)
-        {
-            CheckDeactivation(localPlayerObj);
-            if (multiplePeopleRequired && secondTrigger != null)
-            {
-                secondTrigger.CheckDeactivation(localPlayerObj);
             }
         }
     }
