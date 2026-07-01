@@ -5,6 +5,8 @@ using Photon.Pun;
 [RequireComponent(typeof(PhotonView))]
 public class FirstPersonController : MonoBehaviourPun
 {
+    public static event System.Action<Vector3> OnLocalPlayerRespawn;
+
     [Header("Movement Settings")]
     public float moveSpeed = 5.0f; // Faster walking speed (5.0f)
     public float runSpeed = 8.5f;  // Faster running speed (8.5f)
@@ -1086,6 +1088,8 @@ public class FirstPersonController : MonoBehaviourPun
         }
 
         isDead = false;
+
+        OnLocalPlayerRespawn?.Invoke(activeCheckpointPosition);
     }
 
     private void CreateDeathUI()
