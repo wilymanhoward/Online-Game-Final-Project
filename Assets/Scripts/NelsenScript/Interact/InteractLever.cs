@@ -32,7 +32,7 @@ public class InteractLever : MonoBehaviour, IInteractable
 
     private void Start()
     {   
-        Deactivate();
+        
     }
 
 #region Interface functions

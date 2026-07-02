@@ -1,12 +1,16 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Events;
 
 public class MoveRotateObject : MonoBehaviour
 {
     [Header("Animation Settings")]
     [SerializeField] private bool animatePosition = false;
     [SerializeField] private bool animateRotation = false;
+    [SerializeField] private bool doNotDisturb = false;
+
+    public bool IsMoving => progress > 0f && progress < 1f;
 
     [Header("Speed Settings")]
     [SerializeField] private float baseOpenSpeed = 2f;
@@ -26,6 +30,9 @@ public class MoveRotateObject : MonoBehaviour
     private bool isActive = false;
     private Vector3 targetPosition;
     private Quaternion targetRotation;
+    private Quaternion closedRotationQuaternion;
+    private Quaternion openRotationQuaternion;
+    private float progress = 0f;
 
     [Header("Open Delay Settings")]
     [SerializeField] private bool openWithDelay = false;
@@ -49,11 +56,20 @@ public class MoveRotateObject : MonoBehaviour
 
     private Coroutine closeCoroutine;
 
+    [Header("Events")]
+    public UnityEvent OnActivateObject = new UnityEvent();
+    public UnityEvent OnDeactivateObject = new UnityEvent();
+    public UnityEvent OnReachedClosed = new UnityEvent();
+    public UnityEvent OnReachedOpen = new UnityEvent();
+
     void Start()
     {
         isActive = false;
+        closedRotationQuaternion = Quaternion.Euler(closedRotation);
+        openRotationQuaternion = Quaternion.Euler(openRotation);
         targetPosition = closedPosition;
-        targetRotation = Quaternion.Euler(closedRotation);
+        targetRotation = closedRotationQuaternion;
+        progress = 0f;
 
         if (animatePosition)
         {
@@ -67,15 +83,37 @@ public class MoveRotateObject : MonoBehaviour
 
     void Update()
     {
+        float speed = isActive ? currentOpenSpeed : currentCloseSpeed;
+        float prevProgress = progress;
+
+        if (isActive)
+        {
+            progress = Mathf.MoveTowards(progress, 1f, Time.deltaTime * speed);
+
+            if (progress >= 1f && prevProgress < 1f)
+            {
+                Debug.Log($"[MoveRotateObject] {name} reached opening point (open position). Invoking OnReachedOpen.");
+                OnReachedOpen?.Invoke();
+            }
+        }
+        else
+        {
+            progress = Mathf.MoveTowards(progress, 0f, Time.deltaTime * speed);
+
+            if (progress <= 0f && prevProgress > 0f)
+            {
+                Debug.Log($"[MoveRotateObject] {name} reached closing point (closed position). Invoking OnReachedClosed.");
+                OnReachedClosed?.Invoke();
+            }
+        }
+
         if (animatePosition)
         {
-            float currentPosSpeed = isActive ? currentOpenSpeed : currentCloseSpeed;
-            transform.localPosition = Vector3.Lerp(transform.localPosition, targetPosition, Time.deltaTime * currentPosSpeed);
+            transform.localPosition = Vector3.Lerp(closedPosition, openPosition, progress);
         }
         if (animateRotation)
         {
-            float currentRotSpeed = isActive ? currentOpenSpeed : currentCloseSpeed;
-            transform.localRotation = Quaternion.Slerp(transform.localRotation, targetRotation, Time.deltaTime * currentRotSpeed);
+            transform.localRotation = Quaternion.Slerp(closedRotationQuaternion, openRotationQuaternion, progress);
         }
     }
 
@@ -108,6 +146,13 @@ public class MoveRotateObject : MonoBehaviour
 
     public void Activate(float openSpeed)
     {
+        Activate(openSpeed, false);
+    }
+
+    public void Activate(float openSpeed, bool force)
+    {
+        if (!force && doNotDisturb && IsMoving) return;
+
         if (openCoroutine != null)
         {
             StopCoroutine(openCoroutine);
@@ -127,10 +172,12 @@ public class MoveRotateObject : MonoBehaviour
     private void ExecuteOpen(float openSpeed)
     {
         currentOpenSpeed = openSpeed == 0f ? baseOpenSpeed : openSpeed;
-        Debug.Log($"{name} Activated");
+        Debug.Log($"[MoveRotateObject] {name} Activated (ExecuteOpen). Current progress: {progress}.");
         isActive = true;
         targetPosition = openPosition;
-        targetRotation = Quaternion.Euler(openRotation);
+        targetRotation = openRotationQuaternion;
+
+        OnActivateObject?.Invoke();
 
         if (closeOverTime)
         {
@@ -144,6 +191,24 @@ public class MoveRotateObject : MonoBehaviour
 
     public void Deactivate(float closeSpeed)
     {
+        DeactivateInternal(closeSpeed, false);
+    }
+
+    public void Deactivate(float closeSpeed, bool force)
+    {
+        DeactivateInternal(closeSpeed, force);
+    }
+
+    private void DeactivateInternal(float closeSpeed, bool force)
+    {
+        if (!force && doNotDisturb && IsMoving)
+        {
+            Debug.Log($"[MoveRotateObject] {name} Deactivate blocked by doNotDisturb (currently moving).");
+            return;
+        }
+
+        Debug.Log($"[MoveRotateObject] {name} DeactivateInternal starting close. Current progress: {progress}, speed: {closeSpeed} (base: {baseCloseSpeed}), force: {force}.");
+
         if (openCoroutine != null)
         {
             StopCoroutine(openCoroutine);
@@ -154,7 +219,9 @@ public class MoveRotateObject : MonoBehaviour
         Debug.Log($"{name} Deactivated");
         isActive = false;
         targetPosition = closedPosition;
-        targetRotation = Quaternion.Euler(closedRotation);
+        targetRotation = closedRotationQuaternion;
+
+        OnDeactivateObject?.Invoke();
 
         if (closeCoroutine != null)
         {
@@ -166,12 +233,14 @@ public class MoveRotateObject : MonoBehaviour
     private IEnumerator OpenAfterDelay(float delay, float openSpeed)
     {
         yield return new WaitForSeconds(delay);
+        openCoroutine = null;
         ExecuteOpen(openSpeed);
     }
 
     private IEnumerator CloseAfterDelay(float delay)
     {
         yield return new WaitForSeconds(delay);
-        Deactivate();
+        closeCoroutine = null;
+        DeactivateInternal(0f, true);
     }
 }

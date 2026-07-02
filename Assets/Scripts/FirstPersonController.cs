@@ -93,6 +93,14 @@ public class FirstPersonController : MonoBehaviourPun
     public float deathYThreshold = -15f;
     private Vector3 activeCheckpointPosition;
 
+    [Header("Fall Damage Settings")]
+    [Tooltip("Maximum air time in seconds before fall becomes fatal upon landing.")]
+    public float fatalAirTimeThreshold = 3.0f;
+    private float airTimeCounter = 0f;
+
+    [Header("Input Settings")]
+    [SerializeField] private InputReader inputReader;
+
     // Camera shake fields
     private Vector3 cameraShakeOffset = Vector3.zero;
 
@@ -240,19 +248,42 @@ public class FirstPersonController : MonoBehaviourPun
         {
             CreateDeathUI();
         }
+
+#if UNITY_EDITOR
+        if (inputReader == null)
+        {
+            string[] guids = UnityEditor.AssetDatabase.FindAssets("t:InputReader");
+            if (guids != null && guids.Length > 0)
+            {
+                string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
+                inputReader = UnityEditor.AssetDatabase.LoadAssetAtPath<InputReader>(path);
+            }
+        }
+#endif
+        if (inputReader == null)
+        {
+            InputReader[] readers = Resources.FindObjectsOfTypeAll<InputReader>();
+            if (readers != null && readers.Length > 0)
+            {
+                inputReader = readers[0];
+            }
+        }
     }
 
     void Update()
     {
         if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
 
-        if (Input.GetKeyDown(KeyCode.B) && !isDead)
+        bool disableMovement = inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptLook || inputReader.AreInputsDisabledExceptInteract);
+
+        if (!disableMovement && Input.GetKeyDown(KeyCode.B) && !isDead)
         {
             ToggleBandageOverlay();
         }
 
         if (isDead)
         {
+            airTimeCounter = 0f;
             if (Input.GetMouseButtonDown(0))
             {
                 clickCountToRespawn++;
@@ -283,8 +314,14 @@ public class FirstPersonController : MonoBehaviourPun
         }
 
         // 1. Camera Look Rotation
-        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
-        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+        bool disableLook = inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptInteract);
+        float mouseX = 0f;
+        float mouseY = 0f;
+        if (!disableLook)
+        {
+            mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
+            mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+        }
 
         // Rotate player body horizontally via mouse look
         transform.Rotate(Vector3.up * mouseX);
@@ -340,15 +377,23 @@ public class FirstPersonController : MonoBehaviourPun
                 animator.SetBool("IsGrounded", false);
                 animator.SetBool("OnGround", false);
             }
+            airTimeCounter = 0f;
             return;
         }
 
         // 2. Player Movement
-        float moveHorizontal = Input.GetAxisRaw("Horizontal"); // Changed from GetAxis to GetAxisRaw for instant stopping response
-        float moveVertical = Input.GetAxisRaw("Vertical");     // Changed from GetAxis to GetAxisRaw for instant stopping response
+        float moveHorizontal = 0f;
+        float moveVertical = 0f;
+        bool isRunning = false;
 
-        // Determine if running (holding Shift and moving forward)
-        bool isRunning = (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && (Input.GetKey(KeyCode.W) || moveVertical > 0.1f);
+        if (!disableMovement)
+        {
+            moveHorizontal = Input.GetAxisRaw("Horizontal"); // Changed from GetAxis to GetAxisRaw for instant stopping response
+            moveVertical = Input.GetAxisRaw("Vertical");     // Changed from GetAxis to GetAxisRaw for instant stopping response
+            // Determine if running (holding Shift and moving forward)
+            isRunning = (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && (Input.GetKey(KeyCode.W) || moveVertical > 0.1f);
+        }
+
         float currentSpeed = isRunning ? runSpeed : moveSpeed;
 
         Vector3 inputDir = transform.right * moveHorizontal + transform.forward * moveVertical;
@@ -363,7 +408,7 @@ public class FirstPersonController : MonoBehaviourPun
                 verticalVelocity = -2f; 
             }
 
-            if (Input.GetButtonDown("Jump"))
+            if (!disableMovement && Input.GetButtonDown("Jump"))
             {
                 float obstacleHeight;
                 if (CheckVault(out vaultStartPos, out vaultTargetPos, out obstacleHeight))
@@ -386,8 +431,38 @@ public class FirstPersonController : MonoBehaviourPun
         // Combine horizontal movement and vertical velocity
         move.y = verticalVelocity;
 
+        bool wasGrounded = controller.isGrounded;
+
         // Move character controller
         controller.Move(move * Time.deltaTime);
+
+        // Update air time counter and check for fatal landings
+        if (controller.isGrounded)
+        {
+            if (!wasGrounded)
+            {
+                // Player has just landed
+                if (airTimeCounter >= fatalAirTimeThreshold)
+                {
+                    Debug.Log($"[FallDamage] Player landed after {airTimeCounter:F2} seconds of air time. Fatal threshold was {fatalAirTimeThreshold}s. Respawning.");
+                    Respawn();
+                }
+                else
+                {
+                    Debug.Log($"[FallDamage] Player landed safely after {airTimeCounter:F2} seconds of air time.");
+                }
+                airTimeCounter = 0f;
+            }
+            else
+            {
+                airTimeCounter = 0f;
+            }
+        }
+        else
+        {
+            // Player is in the air (jumping, falling, etc.)
+            airTimeCounter += Time.deltaTime;
+        }
 
         // 3. Update Animator
         if (animator != null && animator.enabled)
@@ -792,6 +867,22 @@ public class FirstPersonController : MonoBehaviourPun
 
     private void UpdateAimingAndTrajectory()
     {
+        bool disableMovement = inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptLook || inputReader.AreInputsDisabledExceptInteract);
+        if (disableMovement)
+        {
+            if (isAiming)
+            {
+                isAiming = false;
+                if (trajectoryLine != null) trajectoryLine.enabled = false;
+                if (landingMarker != null) landingMarker.SetActive(false);
+                if (animator != null && animator.enabled)
+                {
+                    animator.SetBool("Aiming", false);
+                }
+            }
+            return;
+        }
+
         // Aiming Logic (Hold Right-Click) - only active if not currently throwing
         if (Input.GetMouseButton(1) && !isThrowingAnim && (!PhotonNetwork.IsConnected || photonView.IsMine))
         {
@@ -1033,6 +1124,15 @@ public class FirstPersonController : MonoBehaviourPun
         }
     }
 
+    public void ResetAirTime()
+    {
+        // Only run for the local player client
+        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+
+        airTimeCounter = 0f;
+        Debug.Log($"[FallDamage] Air time manually reset for {name}.");
+    }
+
     public void Respawn()
     {
         // Only respawn the local player client
@@ -1081,6 +1181,7 @@ public class FirstPersonController : MonoBehaviourPun
 
         transform.position = activeCheckpointPosition;
         verticalVelocity = 0f;
+        airTimeCounter = 0f;
 
         if (controller != null)
         {
