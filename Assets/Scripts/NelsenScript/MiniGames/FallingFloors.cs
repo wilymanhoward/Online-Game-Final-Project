@@ -129,6 +129,10 @@ public class FallingFloors : MonoBehaviour, IGames
     public void StartGame()
     {
         RestartGame();
+        if(audioSource == null){
+            audioSource = DisabilityManager.Instance.BlindPlayer.GetComponent<AudioSource>();
+        }
+
         roundStart = true;
         currentState = GameState.BetweenRound;
         currentStateTime = timeBetweenRounds;
