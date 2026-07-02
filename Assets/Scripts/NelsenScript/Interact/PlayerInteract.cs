@@ -82,10 +82,11 @@ public class PlayerInteract : MonoBehaviour
             if (mainCamera == null) return;
         }
 
-        ray = mainCamera.ScreenPointToRay(Input.mousePosition);
+        ray = new Ray(mainCamera.transform.position, mainCamera.transform.forward);
         if (Physics.Raycast(ray, out hit, interactRange))
         {
-            if (hit.collider.TryGetComponent<IInteractable>(out IInteractable interactable))
+            IInteractable interactable = hit.collider.GetComponentInParent<IInteractable>();
+            if (interactable != null)
             {
                 // If it is an InteractLever and someone is already waiting on it, block interaction
                 if (interactable is InteractLever lever && lever.WaitingForTeam && !WaitingForTeam)

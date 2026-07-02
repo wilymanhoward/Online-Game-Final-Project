@@ -76,6 +76,15 @@ public class FirstPersonController : MonoBehaviourPun
     private Quaternion defaultLeftKneeRot;
     private Quaternion defaultRightKneeRot;
     private Quaternion defaultRightElbowRot;
+    private Quaternion defaultRightHandRot;
+
+    // Finger Joints & Default Rotations
+    private Transform finger01L, finger02L, finger03L;
+    private Transform index01L, index02L, index03L;
+    private Transform thumb01L, thumb02L, thumb03L;
+    private Quaternion defaultFinger01L, defaultFinger02L, defaultFinger03L;
+    private Quaternion defaultIndex01L, defaultIndex02L, defaultIndex03L;
+    private Quaternion defaultThumb01L, defaultThumb02L, defaultThumb03L;
 
     [Header("Throw Animation")]
     public float throwAnimDuration = 2.65f;
@@ -95,6 +104,11 @@ public class FirstPersonController : MonoBehaviourPun
 
     // Camera shake fields
     private Vector3 cameraShakeOffset = Vector3.zero;
+
+    // Torch Settings
+    private bool isHoldingTorch = false;
+    private float torchHoldWeight = 0f;
+    private GameObject leftHandTorchObj;
 
     // Death Spam Settings
     [Header("Death Spam Settings")]
@@ -183,6 +197,28 @@ public class FirstPersonController : MonoBehaviourPun
         if (leftKneeJoint) defaultLeftKneeRot = leftKneeJoint.localRotation;
         if (rightKneeJoint) defaultRightKneeRot = rightKneeJoint.localRotation;
         if (rightElbowJoint) defaultRightElbowRot = rightElbowJoint.localRotation;
+        if (rightHandJoint) defaultRightHandRot = rightHandJoint.localRotation;
+
+        // Cache left hand finger bones
+        finger01L = FindDeepChild(transform, "Finger_01_L");
+        finger02L = FindDeepChild(transform, "Finger_02_L");
+        finger03L = FindDeepChild(transform, "Finger_03_L");
+        index01L = FindDeepChild(transform, "IndexFinger_01_L");
+        index02L = FindDeepChild(transform, "IndexFinger_02_L");
+        index03L = FindDeepChild(transform, "IndexFinger_03_L");
+        thumb01L = FindDeepChild(transform, "Thumb_01_L");
+        thumb02L = FindDeepChild(transform, "Thumb_02_L");
+        thumb03L = FindDeepChild(transform, "Thumb_03_L");
+
+        if (finger01L) defaultFinger01L = finger01L.localRotation;
+        if (finger02L) defaultFinger02L = finger02L.localRotation;
+        if (finger03L) defaultFinger03L = finger03L.localRotation;
+        if (index01L) defaultIndex01L = index01L.localRotation;
+        if (index02L) defaultIndex02L = index02L.localRotation;
+        if (index03L) defaultIndex03L = index03L.localRotation;
+        if (thumb01L) defaultThumb01L = thumb01L.localRotation;
+        if (thumb02L) defaultThumb02L = thumb02L.localRotation;
+        if (thumb03L) defaultThumb03L = thumb03L.localRotation;
 
         // If this is a remote player, we don't control it
         if (PhotonNetwork.IsConnected && !photonView.IsMine)
@@ -235,6 +271,16 @@ public class FirstPersonController : MonoBehaviourPun
         activeCheckpointPosition = transform.position;
 
         InitializeThrowVisuals();
+
+        if (leftHandJoint != null)
+        {
+            Transform torchTrans = leftHandJoint.Find("SM_Prop_Torch_05");
+            if (torchTrans != null)
+            {
+                leftHandTorchObj = torchTrans.gameObject;
+                leftHandTorchObj.SetActive(isHoldingTorch);
+            }
+        }
 
         if (!PhotonNetwork.IsConnected || photonView.IsMine)
         {
@@ -596,6 +642,52 @@ public class FirstPersonController : MonoBehaviourPun
                 hipsJoint.localPosition = localPos;
             }
         }
+
+        // Smoothly blend the torch holding pose on the left arm joints
+        if (isHoldingTorch)
+        {
+            torchHoldWeight = Mathf.MoveTowards(torchHoldWeight, 1f, Time.deltaTime * 5f);
+        }
+        else
+        {
+            torchHoldWeight = Mathf.MoveTowards(torchHoldWeight, 0f, Time.deltaTime * 5f);
+        }
+
+        if (torchHoldWeight > 0.01f)
+        {
+            if (leftArmJoint != null)
+            {
+                // Bends left upper arm up-forward and slightly outward (more to the side)
+                // Also tilts up/down (using parent chest-space pitch) to follow camera movement
+                Quaternion targetArmRot = Quaternion.Euler(pitch, 0f, 0f) * defaultLeftArmRot * Quaternion.Euler(65f, 50f, -10f);
+                leftArmJoint.localRotation = Quaternion.Slerp(leftArmJoint.localRotation, targetArmRot, torchHoldWeight);
+            }
+            if (leftElbowJoint != null)
+            {
+                // Bends elbow forward
+                Quaternion targetElbowRot = defaultLeftElbowRot * Quaternion.Euler(-120f, 0f, 0f);
+                leftElbowJoint.localRotation = Quaternion.Slerp(leftElbowJoint.localRotation, targetElbowRot, torchHoldWeight);
+            }
+            if (leftHandJoint != null)
+            {
+                // Holds torch upright and slightly tilted
+                Quaternion targetHandRot = defaultLeftHandRot * Quaternion.Euler(0f, 0f, 60f);
+                leftHandJoint.localRotation = Quaternion.Slerp(leftHandJoint.localRotation, targetHandRot, torchHoldWeight);
+            }
+
+            // Grip fingers around torch handle
+            if (finger01L != null) finger01L.localRotation = Quaternion.Slerp(finger01L.localRotation, defaultFinger01L * Quaternion.Euler(0f, 40f, 60f), torchHoldWeight);
+            if (finger02L != null) finger02L.localRotation = Quaternion.Slerp(finger02L.localRotation, defaultFinger02L * Quaternion.Euler(0f, 40f, 60f), torchHoldWeight);
+            if (finger03L != null) finger03L.localRotation = Quaternion.Slerp(finger03L.localRotation, defaultFinger03L * Quaternion.Euler(0f, 40f, 60f), torchHoldWeight);
+
+            if (index01L != null) index01L.localRotation = Quaternion.Slerp(index01L.localRotation, defaultIndex01L * Quaternion.Euler(0f, -40f, 40f), torchHoldWeight);
+            if (index02L != null) index02L.localRotation = Quaternion.Slerp(index02L.localRotation, defaultIndex02L * Quaternion.Euler(0f, -40f, 40f), torchHoldWeight);
+            if (index03L != null) index03L.localRotation = Quaternion.Slerp(index03L.localRotation, defaultIndex03L * Quaternion.Euler(0f, -40f, 40f), torchHoldWeight);
+
+            if (thumb01L != null) thumb01L.localRotation = Quaternion.Slerp(thumb01L.localRotation, defaultThumb01L * Quaternion.Euler(0f, -40f, 30f), torchHoldWeight);
+            if (thumb02L != null) thumb02L.localRotation = Quaternion.Slerp(thumb02L.localRotation, defaultThumb02L * Quaternion.Euler(0f, -40f, 30f), torchHoldWeight);
+            if (thumb03L != null) thumb03L.localRotation = Quaternion.Slerp(thumb03L.localRotation, defaultThumb03L * Quaternion.Euler(0f, -40f, 30f), torchHoldWeight);
+        }
     }
 
     // Animation Event receiver to prevent Unity console warnings
@@ -705,6 +797,18 @@ public class FirstPersonController : MonoBehaviourPun
         if (leftElbowJoint) leftElbowJoint.localRotation = defaultLeftElbowRot;
         if (leftHandJoint) leftHandJoint.localRotation = defaultLeftHandRot;
         if (rightElbowJoint) rightElbowJoint.localRotation = defaultRightElbowRot;
+        if (rightHandJoint) rightHandJoint.localRotation = defaultRightHandRot;
+
+        // Reset finger joints
+        if (finger01L) finger01L.localRotation = defaultFinger01L;
+        if (finger02L) finger02L.localRotation = defaultFinger02L;
+        if (finger03L) finger03L.localRotation = defaultFinger03L;
+        if (index01L) index01L.localRotation = defaultIndex01L;
+        if (index02L) index02L.localRotation = defaultIndex02L;
+        if (index03L) index03L.localRotation = defaultIndex03L;
+        if (thumb01L) thumb01L.localRotation = defaultThumb01L;
+        if (thumb02L) thumb02L.localRotation = defaultThumb02L;
+        if (thumb03L) thumb03L.localRotation = defaultThumb03L;
     }
 
     private Transform FindDeepChild(Transform parent, string name)
@@ -1084,12 +1188,51 @@ public class FirstPersonController : MonoBehaviourPun
 
         if (controller != null)
         {
-            controller.enabled = true;
+                    controller.enabled = true;
         }
 
         isDead = false;
 
+        SetHoldingTorch(false);
+
         OnLocalPlayerRespawn?.Invoke(activeCheckpointPosition);
+    }
+
+    public void SetHoldingTorch(bool holding)
+    {
+        if (PhotonNetwork.IsConnected)
+        {
+            photonView.RPC("SetHoldingTorchRPC", RpcTarget.AllBuffered, holding);
+        }
+        else
+        {
+            SetHoldingTorchLocal(holding);
+        }
+    }
+
+    [PunRPC]
+    private void SetHoldingTorchRPC(bool holding)
+    {
+        SetHoldingTorchLocal(holding);
+    }
+
+    private void SetHoldingTorchLocal(bool holding)
+    {
+        isHoldingTorch = holding;
+
+        if (leftHandTorchObj == null && leftHandJoint != null)
+        {
+            Transform torchTrans = leftHandJoint.Find("SM_Prop_Torch_05");
+            if (torchTrans != null)
+            {
+                leftHandTorchObj = torchTrans.gameObject;
+            }
+        }
+
+        if (leftHandTorchObj != null)
+        {
+            leftHandTorchObj.SetActive(holding);
+        }
     }
 
     private void CreateDeathUI()
