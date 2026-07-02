@@ -76,6 +76,29 @@ public class PlayerInteract : MonoBehaviour
             return;
         }
 
+        // Proximity-based interaction for Torches: stand close and press E without aiming
+        TorchInteractable closestTorch = null;
+        float minDistance = interactRange;
+        var torches = FindObjectsOfType<TorchInteractable>();
+        foreach (var torch in torches)
+        {
+            if (torch != null)
+            {
+                float dist = Vector3.Distance(transform.position, torch.transform.position);
+                if (dist < minDistance)
+                {
+                    minDistance = dist;
+                    closestTorch = torch;
+                }
+            }
+        }
+
+        if (closestTorch != null)
+        {
+            closestTorch.Interact();
+            return;
+        }
+
         if (mainCamera == null)
         {
             mainCamera = Camera.main;

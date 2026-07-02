@@ -74,8 +74,6 @@ public class TorchInteractable : MonoBehaviour, IInteractable
 
     public void Interact()
     {
-        if (isPickedUp) return;
-
         // Find the local player client triggering the interaction
         FirstPersonController localPlayer = null;
         var players = FindObjectsOfType<FirstPersonController>();
@@ -90,36 +88,67 @@ public class TorchInteractable : MonoBehaviour, IInteractable
 
         if (localPlayer != null)
         {
-            // Set player to hold torch
-            localPlayer.SetHoldingTorch(true);
-            
-            // Hide/deactivate locally instantly for immediate response
-            PickupTorchLocal();
-            
-            // Sync deactivation of the scene torch across all other clients if Photon is running
-            if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0)
+            if (isPickedUp)
             {
-                pv.RPC("PickupTorchRPC", RpcTarget.OthersBuffered);
+                // Wall torch is empty, and player is holding a torch -> Put it back!
+                if (localPlayer.IsHoldingTorch)
+                {
+                    // Trigger the place animation, and show the wall torch at the release point (0.3 seconds in)
+                    localPlayer.TriggerPlaceTorchAnimation(() => {
+                        // Set wall torch active state locally instantly
+                        SetTorchStateLocal(false);
+                        
+                        // Sync placement back across network
+                        if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0)
+                        {
+                            pv.RPC("SetTorchStateRPC", RpcTarget.OthersBuffered, false);
+                        }
+                    });
+                }
+            }
+            else
+            {
+                // Wall torch is present, and player is NOT holding a torch -> Pick it up!
+                if (!localPlayer.IsHoldingTorch)
+                {
+                    localPlayer.SetHoldingTorch(true);
+                    
+                    // Set wall torch active state locally instantly
+                    SetTorchStateLocal(true);
+                    
+                    // Sync pickup across network
+                    if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0)
+                    {
+                        pv.RPC("SetTorchStateRPC", RpcTarget.OthersBuffered, true);
+                    }
+                }
             }
         }
     }
 
     [PunRPC]
-    private void PickupTorchRPC()
+    private void SetTorchStateRPC(bool pickedUp)
     {
-        PickupTorchLocal();
+        SetTorchStateLocal(pickedUp);
     }
 
-    private void PickupTorchLocal()
+    private void SetTorchStateLocal(bool pickedUp)
     {
-        isPickedUp = true;
-        if (torchObjectToHide != null)
+        isPickedUp = pickedUp;
+        
+        GameObject target = torchObjectToHide != null ? torchObjectToHide : gameObject;
+        
+        // Hide/show the mesh renderer of the target
+        var mr = target.GetComponent<MeshRenderer>();
+        if (mr != null)
         {
-            torchObjectToHide.SetActive(false);
+            mr.enabled = !pickedUp;
         }
-        else
+
+        // Hide/show all child objects of the target (like FX_Fire_01 and TorchLight)
+        foreach (Transform child in target.transform)
         {
-            gameObject.SetActive(false);
+            child.gameObject.SetActive(!pickedUp);
         }
     }
 

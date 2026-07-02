@@ -107,8 +107,15 @@ public class FirstPersonController : MonoBehaviourPun
 
     // Torch Settings
     private bool isHoldingTorch = false;
+    public bool IsHoldingTorch => isHoldingTorch;
     private float torchHoldWeight = 0f;
     private GameObject leftHandTorchObj;
+
+    // Torch placing animation state
+    private bool isPlacingTorch = false;
+    public bool IsPlacingTorch => isPlacingTorch;
+    private float torchPlaceTimer = 0f;
+    private System.Action onTorchPlacedCallback = null;
 
     // Death Spam Settings
     [Header("Death Spam Settings")]
@@ -643,6 +650,22 @@ public class FirstPersonController : MonoBehaviourPun
             }
         }
 
+        // Handle torch placing animation updates
+        if (isPlacingTorch)
+        {
+            torchPlaceTimer -= Time.deltaTime;
+            if (torchPlaceTimer <= 0.3f && onTorchPlacedCallback != null)
+            {
+                onTorchPlacedCallback.Invoke();
+                onTorchPlacedCallback = null;
+                SetHoldingTorch(false);
+            }
+            if (torchPlaceTimer <= 0f)
+            {
+                isPlacingTorch = false;
+            }
+        }
+
         // Smoothly blend the torch holding pose on the left arm joints
         if (isHoldingTorch)
         {
@@ -655,23 +678,36 @@ public class FirstPersonController : MonoBehaviourPun
 
         if (torchHoldWeight > 0.01f)
         {
+            float placeBlend = 0f;
+            if (isPlacingTorch && torchPlaceTimer > 0.3f)
+            {
+                placeBlend = Mathf.Clamp01((0.6f - torchPlaceTimer) / 0.3f);
+            }
+
+            float armX = Mathf.Lerp(65f, 75f, placeBlend);
+            float armY = Mathf.Lerp(50f, 30f, placeBlend);
+            float armZ = Mathf.Lerp(-10f, -5f, placeBlend);
+
+            float elbowX = Mathf.Lerp(-120f, -40f, placeBlend);
+            float handZ = Mathf.Lerp(60f, 50f, placeBlend);
+
             if (leftArmJoint != null)
             {
                 // Bends left upper arm up-forward and slightly outward (more to the side)
                 // Also tilts up/down (using parent chest-space pitch) to follow camera movement
-                Quaternion targetArmRot = Quaternion.Euler(pitch, 0f, 0f) * defaultLeftArmRot * Quaternion.Euler(65f, 50f, -10f);
+                Quaternion targetArmRot = Quaternion.Euler(pitch, 0f, 0f) * defaultLeftArmRot * Quaternion.Euler(armX, armY, armZ);
                 leftArmJoint.localRotation = Quaternion.Slerp(leftArmJoint.localRotation, targetArmRot, torchHoldWeight);
             }
             if (leftElbowJoint != null)
             {
                 // Bends elbow forward
-                Quaternion targetElbowRot = defaultLeftElbowRot * Quaternion.Euler(-120f, 0f, 0f);
+                Quaternion targetElbowRot = defaultLeftElbowRot * Quaternion.Euler(elbowX, 0f, 0f);
                 leftElbowJoint.localRotation = Quaternion.Slerp(leftElbowJoint.localRotation, targetElbowRot, torchHoldWeight);
             }
             if (leftHandJoint != null)
             {
                 // Holds torch upright and slightly tilted
-                Quaternion targetHandRot = defaultLeftHandRot * Quaternion.Euler(0f, 0f, 60f);
+                Quaternion targetHandRot = defaultLeftHandRot * Quaternion.Euler(0f, 0f, handZ);
                 leftHandJoint.localRotation = Quaternion.Slerp(leftHandJoint.localRotation, targetHandRot, torchHoldWeight);
             }
 
@@ -1196,6 +1232,16 @@ public class FirstPersonController : MonoBehaviourPun
         SetHoldingTorch(false);
 
         OnLocalPlayerRespawn?.Invoke(activeCheckpointPosition);
+    }
+
+    public void TriggerPlaceTorchAnimation(System.Action onPlaced)
+    {
+        if (isHoldingTorch && !isPlacingTorch)
+        {
+            isPlacingTorch = true;
+            torchPlaceTimer = 0.6f;
+            onTorchPlacedCallback = onPlaced;
+        }
     }
 
     public void SetHoldingTorch(bool holding)
