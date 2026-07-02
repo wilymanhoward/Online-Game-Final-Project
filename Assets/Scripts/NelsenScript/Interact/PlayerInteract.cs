@@ -76,16 +76,40 @@ public class PlayerInteract : MonoBehaviour
             return;
         }
 
+        // Proximity-based interaction for Torches: stand close and press E without aiming
+        TorchInteractable closestTorch = null;
+        float minDistance = interactRange;
+        var torches = FindObjectsOfType<TorchInteractable>();
+        foreach (var torch in torches)
+        {
+            if (torch != null)
+            {
+                float dist = Vector3.Distance(transform.position, torch.transform.position);
+                if (dist < minDistance)
+                {
+                    minDistance = dist;
+                    closestTorch = torch;
+                }
+            }
+        }
+
+        if (closestTorch != null)
+        {
+            closestTorch.Interact();
+            return;
+        }
+
         if (mainCamera == null)
         {
             mainCamera = Camera.main;
             if (mainCamera == null) return;
         }
 
-        ray = mainCamera.ScreenPointToRay(Input.mousePosition);
+        ray = new Ray(mainCamera.transform.position, mainCamera.transform.forward);
         if (Physics.Raycast(ray, out hit, interactRange))
         {
-            if (hit.collider.TryGetComponent<IInteractable>(out IInteractable interactable))
+            IInteractable interactable = hit.collider.GetComponentInParent<IInteractable>();
+            if (interactable != null)
             {
                 // If it is an InteractLever and someone is already waiting on it, block interaction
                 if (interactable is InteractLever lever && lever.WaitingForTeam && !WaitingForTeam)
