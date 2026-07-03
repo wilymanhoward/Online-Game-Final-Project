@@ -256,7 +256,7 @@ public class FallingFloors : MonoBehaviour, IGames
                 MoveRotateObject moveRotate = pair.Key.GetComponent<MoveRotateObject>();
                 if (moveRotate != null)
                 {
-                    Debug.Log($"[FallingFloors] Calling Activate (force=true) on incorrect platform: {pair.Key.name}. Current MoveRotate state - isActive: {moveRotate.isActive}, progress: {moveRotate.IsMoving}");
+                    Debug.Log($"[FallingFloors] Calling Activate (force=true) on incorrect platform: {pair.Key.name}. Current MoveRotate state - isActive: {moveRotate.IsActive}, progress: {moveRotate.IsMoving}");
                     moveRotate.Activate(0f, true); // Force drop
                 }
                 else
