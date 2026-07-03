@@ -104,10 +104,18 @@ public class FirstPersonController : MonoBehaviourPun
     // Camera shake fields
     private Vector3 cameraShakeOffset = Vector3.zero;
 
+    [Header("Moving Platform Settings")]
+    [SerializeField] private float platformRaycastDistance = 1.5f;
+    [SerializeField] private LayerMask platformLayerMask = ~0;
+    private Transform activePlatform;
+    private Vector3 activePlatformLocalPosition;
+    private Transform _lastActivePlatform;
+
     // Death Spam Settings
     [Header("Death Spam Settings")]
     public int requiredClicksForRespawn = 5;
     private bool isDead = false;
+    public bool IsDead => isDead;
     private int clickCountToRespawn = 0;
     private GameObject deathOverlayObj;
     private UnityEngine.UI.Text deathClicksText;
@@ -136,6 +144,11 @@ public class FirstPersonController : MonoBehaviourPun
 
     void Start()
     {
+        if (platformLayerMask.value == 0)
+        {
+            platformLayerMask = ~0;
+        }
+
         controller = GetComponent<CharacterController>();
         animator = GetComponent<Animator>();
 
@@ -313,6 +326,25 @@ public class FirstPersonController : MonoBehaviourPun
             return;
         }
 
+        // Apply moving platform delta position
+        if (activePlatform != null)
+        {
+            if (activePlatform.gameObject.activeInHierarchy)
+            {
+                Vector3 targetPosition = activePlatform.TransformPoint(activePlatformLocalPosition);
+                Vector3 platformDelta = targetPosition - transform.position;
+
+                if (platformDelta.sqrMagnitude > 0.0001f)
+                {
+                    controller.Move(platformDelta);
+                }
+            }
+            else
+            {
+                activePlatform = null;
+            }
+        }
+
         // 1. Camera Look Rotation
         bool disableLook = inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptInteract);
         float mouseX = 0f;
@@ -419,6 +451,7 @@ public class FirstPersonController : MonoBehaviourPun
                 else
                 {
                     verticalVelocity = jumpSpeed;
+                    activePlatform = null;
                 }
             }
         }
@@ -462,6 +495,37 @@ public class FirstPersonController : MonoBehaviourPun
         {
             // Player is in the air (jumping, falling, etc.)
             airTimeCounter += Time.deltaTime;
+        }
+
+        // Detect moving platforms/ground via raycast
+        RaycastHit hit;
+        Vector3 rayStart = transform.position + Vector3.up * 0.5f;
+        float rayDistance = 0.5f + platformRaycastDistance;
+        int combinedLayerMask = platformLayerMask & (~(1 << gameObject.layer));
+
+        bool hitGround = false;
+        if (Physics.Raycast(rayStart, Vector3.down, out hit, rayDistance, combinedLayerMask, QueryTriggerInteraction.Ignore))
+        {
+            // Only stick to the platform if we are grounded, or if we were already riding the platform and are falling but close to it (e.g. elevator going down)
+            bool shouldStick = controller.isGrounded || (activePlatform != null && verticalVelocity <= 0f && hit.distance <= (0.5f + 1.0f));
+
+            if (shouldStick && hit.collider != null && !hit.collider.isTrigger)
+            {
+                activePlatform = hit.transform;
+                activePlatformLocalPosition = activePlatform.InverseTransformPoint(transform.position);
+                hitGround = true;
+            }
+        }
+
+        if (!hitGround)
+        {
+            activePlatform = null;
+        }
+
+        if (activePlatform != _lastActivePlatform)
+        {
+            Debug.Log($"[PlatformRider] Active platform changed from {(_lastActivePlatform != null ? _lastActivePlatform.name : "None")} to {(activePlatform != null ? activePlatform.name : "None")}");
+            _lastActivePlatform = activePlatform;
         }
 
         // 3. Update Animator
@@ -688,6 +752,7 @@ public class FirstPersonController : MonoBehaviourPun
     public void StartVaultRPC(Vector3 startPos, Vector3 targetPos, float duration, float peakHeight)
     {
         isVaulting = true;
+        activePlatform = null;
         vaultTimer = 0f;
         vaultStartPos = startPos;
         vaultTargetPos = targetPos;
@@ -1182,6 +1247,7 @@ public class FirstPersonController : MonoBehaviourPun
         transform.position = activeCheckpointPosition;
         verticalVelocity = 0f;
         airTimeCounter = 0f;
+        activePlatform = null;
 
         if (controller != null)
         {

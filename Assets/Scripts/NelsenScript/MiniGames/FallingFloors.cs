@@ -67,6 +67,25 @@ public class FallingFloors : MonoBehaviour, IGames
 
     private void Update()
     {
+        if (currentState != GameState.GameEnd && roundStart)
+        {
+            if (IsBlindPlayerDead() || IsBlindPlayerDeaf())
+            {
+                if (audioSource != null && audioSource.isPlaying)
+                {
+                    audioSource.Stop();
+                }
+            }
+
+            if (AreAllPlayersDead())
+            {
+                Debug.Log("[FallingFloors] Both players are dead. Ending game.");
+                currentState = GameState.GameEnd;
+                EndGame();
+                return;
+            }
+        }
+
         if (roundStart)
         {
             currentTime += Time.deltaTime;
@@ -228,6 +247,66 @@ public class FallingFloors : MonoBehaviour, IGames
         OnGameWonEvent?.Invoke();
     }
 
+    private bool IsBlindPlayerDead()
+    {
+        if (DisabilityManager.Instance != null && DisabilityManager.Instance.BlindPlayer != null)
+        {
+            FirstPersonController blindCtrl = DisabilityManager.Instance.BlindPlayer.GetComponent<FirstPersonController>();
+            return blindCtrl != null && blindCtrl.IsDead;
+        }
+        return false;
+    }
+
+    private bool IsBlindPlayerDeaf()
+    {
+        if (DisabilityManager.Instance != null && DisabilityManager.Instance.BlindPlayer != null)
+        {
+            PlayerDisability pd = DisabilityManager.Instance.BlindPlayer.GetComponent<PlayerDisability>();
+            return pd != null && pd.IsDeafActive;
+        }
+        return false;
+    }
+
+    private bool AreAllPlayersDead()
+    {
+        if (DisabilityManager.Instance != null)
+        {
+            GameObject blind = DisabilityManager.Instance.BlindPlayer;
+            GameObject deaf = DisabilityManager.Instance.DeafPlayer;
+
+            if (blind != null && deaf != null)
+            {
+                FirstPersonController blindCtrl = blind.GetComponent<FirstPersonController>();
+                FirstPersonController deafCtrl = deaf.GetComponent<FirstPersonController>();
+                bool blindDead = blindCtrl != null && blindCtrl.IsDead;
+                bool deafDead = deafCtrl != null && deafCtrl.IsDead;
+                return blindDead && deafDead;
+            }
+            else if (blind != null)
+            {
+                FirstPersonController blindCtrl = blind.GetComponent<FirstPersonController>();
+                return blindCtrl != null && blindCtrl.IsDead;
+            }
+            else if (deaf != null)
+            {
+                FirstPersonController deafCtrl = deaf.GetComponent<FirstPersonController>();
+                return deafCtrl != null && deafCtrl.IsDead;
+            }
+        }
+
+        FirstPersonController[] players = FindObjectsOfType<FirstPersonController>();
+        if (players == null || players.Length == 0) return false;
+
+        foreach (var player in players)
+        {
+            if (player != null && !player.IsDead)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     #region Platforms
     private void GenerateRandomPlatformsSymbol()
     {
@@ -303,12 +382,30 @@ public class FallingFloors : MonoBehaviour, IGames
 
         foreach (int s in symbol)
         {
+            if (IsBlindPlayerDead() || IsBlindPlayerDeaf())
+            {
+                audioSource.Stop();
+                yield break;
+            }
+
             int clipIndex = s - 1; // Translate 1,2,3 to 0,1,2
             if (clipIndex >= 0 && clipIndex < symbolClips.Length && symbolClips[clipIndex] != null)
             {
                 audioSource.clip = symbolClips[clipIndex];
                 audioSource.Play();
-                yield return new WaitWhile(() => audioSource.isPlaying);
+                
+                while (audioSource.isPlaying)
+                {
+                    if (IsBlindPlayerDead() || IsBlindPlayerDeaf())
+                    {
+                        audioSource.Stop();
+                        audioSource.clip = null;
+                        audioSource.loop = originalLoop;
+                        yield break;
+                    }
+                    yield return null;
+                }
+
                 yield return new WaitForSeconds(0.2f); // Short pause between playbacks
             }
         }
@@ -340,6 +437,12 @@ public class FallingFloors : MonoBehaviour, IGames
 
         while (currentState == GameState.RoundStart && roundStart)
         {
+            if (IsBlindPlayerDead() || IsBlindPlayerDeaf())
+            {
+                audioSource.Stop();
+                yield break;
+            }
+
             float timeLeft = currentStateTime - currentTime;
             if (timeLeft <= 0.1f) break;
 

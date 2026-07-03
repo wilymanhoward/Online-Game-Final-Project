@@ -62,7 +62,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: a4df902a2d750114997699d6fbb2276d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -98,12 +98,29 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   animatePosition: 0
   animateRotation: 1
+  doNotDisturb: 0
   baseOpenSpeed: 2
   baseCloseSpeed: 2
   closedPosition: {x: 0, y: 0, z: 0}
   openPosition: {x: 0, y: 0, z: 0}
   closedRotation: {x: 0, y: 30, z: 0}
   openRotation: {x: 0, y: -30, z: 0}
+  openWithDelay: 0
+  openDelay: 1
+  closeOverTime: 0
+  closeDelay: 3
+  OnActivateObject:
+    m_PersistentCalls:
+      m_Calls: []
+  OnDeactivateObject:
+    m_PersistentCalls:
+      m_Calls: []
+  OnReachedClosed:
+    m_PersistentCalls:
+      m_Calls: []
+  OnReachedOpen:
+    m_PersistentCalls:
+      m_Calls: []
 --- !u!1 &6547847432249484905
 GameObject:
   m_ObjectHideFlags: 0
@@ -138,7 +155,7 @@ Transform:
   m_Children:
   - {fileID: 6547847431947088823}
   m_Father: {fileID: 0}
-  m_RootOrder: 8
+  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &6547847432249484900
 MeshFilter:
@@ -168,7 +185,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: a4df902a2d750114997699d6fbb2276d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -202,14 +219,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 456ba5de020bbdb49b211b5d1e8c29a4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  CloseOverTime: 0
-  closeDelay: 3
+  multiplePeopleRequired: 1
   WaitingForTeam: 0
   LeverActivated: 0
   SecondLever: {fileID: 0}
-  OnCloseOvertimeEvent:
-    m_PersistentCalls:
-      m_Calls: []
   OnActivateEvent:
     m_PersistentCalls:
       m_Calls:
