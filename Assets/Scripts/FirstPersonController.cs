@@ -129,6 +129,7 @@ public class FirstPersonController : MonoBehaviourPun
     [Header("Death Spam Settings")]
     public int requiredClicksForRespawn = 5;
     private bool isDead = false;
+    public bool IsDead => isDead;
     private int clickCountToRespawn = 0;
     private GameObject deathOverlayObj;
     private UnityEngine.UI.Text deathClicksText;
