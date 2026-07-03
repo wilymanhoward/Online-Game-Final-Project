@@ -2385,12 +2385,6 @@ PrefabInstance:
     m_RemovedComponents: []
     m_AddedGameObjects: []
   m_SourcePrefab: {fileID: 100100000, guid: 03cd179f78224e5409ed516f07b428ac, type: 3}
---- !u!1 &227294526 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 8500997249057913509, guid: 03cd179f78224e5409ed516f07b428ac,
-    type: 3}
-  m_PrefabInstance: {fileID: 227294525}
-  m_PrefabAsset: {fileID: 0}
 --- !u!23 &227294527 stripped
 MeshRenderer:
   m_CorrespondingSourceObject: {fileID: 7996536434368764784, guid: 03cd179f78224e5409ed516f07b428ac,
@@ -2584,7 +2578,7 @@ MonoBehaviour:
       - m_Target: {fileID: 1021283256}
         m_TargetAssemblyTypeName: Cel_MainMenu, Assembly-CSharp
         m_MethodName: OnCreateGameClicked
-        m_Mode: 0
+        m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
           m_ObjectArgumentAssemblyTypeName: 
@@ -3322,12 +3316,6 @@ PrefabInstance:
     m_RemovedComponents: []
     m_AddedGameObjects: []
   m_SourcePrefab: {fileID: 100100000, guid: 03cd179f78224e5409ed516f07b428ac, type: 3}
---- !u!1 &323221543 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 8500997249057913509, guid: 03cd179f78224e5409ed516f07b428ac,
-    type: 3}
-  m_PrefabInstance: {fileID: 323221542}
-  m_PrefabAsset: {fileID: 0}
 --- !u!23 &323221544 stripped
 MeshRenderer:
   m_CorrespondingSourceObject: {fileID: 7996536434368764784, guid: 03cd179f78224e5409ed516f07b428ac,
@@ -4831,6 +4819,12 @@ PrefabInstance:
     m_RemovedComponents: []
     m_AddedGameObjects: []
   m_SourcePrefab: {fileID: 100100000, guid: 03cd179f78224e5409ed516f07b428ac, type: 3}
+--- !u!1 &517511762 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 8500997249057913509, guid: 03cd179f78224e5409ed516f07b428ac,
+    type: 3}
+  m_PrefabInstance: {fileID: 517511761}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &530598546
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -5104,8 +5098,8 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1021283256}
         m_TargetAssemblyTypeName: Cel_MainMenu, Assembly-CSharp
-        m_MethodName: OnBackFromLobbyClicked
-        m_Mode: 0
+        m_MethodName: OnCreateRoomClicked
+        m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
           m_ObjectArgumentAssemblyTypeName: 
@@ -5577,7 +5571,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "Enter name\u200B"
+  m_text: Enter name
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: cf728594717f0264f8847eab5b8ae2b2, type: 2}
   m_sharedMaterial: {fileID: 704996057026098968, guid: cf728594717f0264f8847eab5b8ae2b2,
@@ -5605,8 +5599,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 14
-  m_fontSizeBase: 14
+  m_fontSize: 20
+  m_fontSizeBase: 20
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -6316,8 +6310,8 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1021283256}
         m_TargetAssemblyTypeName: Cel_MainMenu, Assembly-CSharp
-        m_MethodName: OnBackFromLobbyClicked
-        m_Mode: 0
+        m_MethodName: OnJoinRoomConfirmClicked
+        m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
           m_ObjectArgumentAssemblyTypeName: 
@@ -9057,24 +9051,30 @@ MonoBehaviour:
   - {fileID: 1915217351}
   - {fileID: 409204120}
   panelToHide: {fileID: 242350411}
-  panelToShow: {fileID: 673677595}
+  panelToShow: {fileID: 0}
   panel2ToShow: {fileID: 1377627753}
   panel3ToShow: {fileID: 673677595}
+  panel4ToShow: {fileID: 1910370226}
+  panel5ToShow: {fileID: 167853464}
   stonesToShow:
-  - {fileID: 323221543}
-  - {fileID: 1177904737}
-  - {fileID: 227294526}
-  - {fileID: 0}
-  - {fileID: 0}
-  headerText: {fileID: 0}
-  createButtonText: {fileID: 0}
-  roomNameInput: {fileID: 0}
-  inputRoomCodeStone: {fileID: 0}
-  playerStone1: {fileID: 0}
-  playerStone2: {fileID: 0}
+  - {fileID: 1631835125}
+  - {fileID: 99658586}
+  - {fileID: 1342977515}
+  - {fileID: 1484399676}
+  - {fileID: 104683463}
+  headerText: {fileID: 1891181743}
+  createButtonText: {fileID: 1283418279}
+  roomNameInput: {fileID: 1662673681}
+  playerNameInput: {fileID: 1159577904}
+  player1Text: {fileID: 833191273}
+  player2Text: {fileID: 1843913072}
+  inputRoomCodeStone: {fileID: 1208544393}
+  playerStone1: {fileID: 517511762}
+  playerStone2: {fileID: 1198968536}
   mainCamera: {fileID: 857788072}
   targetCameraPosition: {fileID: 297318510}
   cameraMoveSpeed: 2
+  transitionDuration: 0.2
 --- !u!1001 &1045257337
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -11160,12 +11160,6 @@ PrefabInstance:
     m_RemovedComponents: []
     m_AddedGameObjects: []
   m_SourcePrefab: {fileID: 100100000, guid: 03cd179f78224e5409ed516f07b428ac, type: 3}
---- !u!1 &1177904737 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 8500997249057913509, guid: 03cd179f78224e5409ed516f07b428ac,
-    type: 3}
-  m_PrefabInstance: {fileID: 1177904736}
-  m_PrefabAsset: {fileID: 0}
 --- !u!23 &1177904738 stripped
 MeshRenderer:
   m_CorrespondingSourceObject: {fileID: 7996536434368764784, guid: 03cd179f78224e5409ed516f07b428ac,
@@ -11471,6 +11465,12 @@ PrefabInstance:
     m_RemovedComponents: []
     m_AddedGameObjects: []
   m_SourcePrefab: {fileID: 100100000, guid: 03cd179f78224e5409ed516f07b428ac, type: 3}
+--- !u!1 &1198968536 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 8500997249057913509, guid: 03cd179f78224e5409ed516f07b428ac,
+    type: 3}
+  m_PrefabInstance: {fileID: 1198968535}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &1201381356
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -11781,6 +11781,12 @@ PrefabInstance:
     m_RemovedComponents: []
     m_AddedGameObjects: []
   m_SourcePrefab: {fileID: 100100000, guid: 03cd179f78224e5409ed516f07b428ac, type: 3}
+--- !u!1 &1208544393 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 8500997249057913509, guid: 03cd179f78224e5409ed516f07b428ac,
+    type: 3}
+  m_PrefabInstance: {fileID: 1208544392}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &1209126740
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -13506,7 +13512,7 @@ MonoBehaviour:
       - m_Target: {fileID: 1021283256}
         m_TargetAssemblyTypeName: Cel_MainMenu, Assembly-CSharp
         m_MethodName: OnJoinGameClicked
-        m_Mode: 0
+        m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
           m_ObjectArgumentAssemblyTypeName: 
@@ -17105,8 +17111,8 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1021283256}
         m_TargetAssemblyTypeName: Cel_MainMenu, Assembly-CSharp
-        m_MethodName: OnBackFromLobbyClicked
-        m_Mode: 0
+        m_MethodName: OnConfirmNameClicked
+        m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
           m_ObjectArgumentAssemblyTypeName: 
@@ -18015,7 +18021,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Enter name
+  m_text: 
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: cf728594717f0264f8847eab5b8ae2b2, type: 2}
   m_sharedMaterial: {fileID: 704996057026098968, guid: cf728594717f0264f8847eab5b8ae2b2,
@@ -18043,8 +18049,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 14
-  m_fontSizeBase: 14
+  m_fontSize: 20
+  m_fontSizeBase: 20
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -18324,7 +18330,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -92, y: 309}
-  m_SizeDelta: {x: 200, y: 50}
+  m_SizeDelta: {x: 284.68, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1891181743
 MonoBehaviour:
