@@ -11,6 +11,8 @@ public class MoveRotateObject : MonoBehaviour
     [SerializeField] private bool doNotDisturb = false;
 
     public bool IsMoving => progress > 0f && progress < 1f;
+    public bool IsActive => isActive;
+
 
     [Header("Speed Settings")]
     [SerializeField] private float baseOpenSpeed = 2f;
