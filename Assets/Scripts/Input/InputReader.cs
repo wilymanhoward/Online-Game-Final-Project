@@ -23,6 +23,10 @@ public class InputReader : ScriptableObject, PlayerInput.IMovementActions, Playe
     private bool inputsDisabledExceptLook = false;
     private bool inputsDisabledExceptInteract = false;
 
+    public bool AreInputsDisabled => inputsDisabled;
+    public bool AreInputsDisabledExceptLook => inputsDisabledExceptLook;
+    public bool AreInputsDisabledExceptInteract => inputsDisabledExceptInteract;
+
     public void SetInputsDisabled(bool disabled)
     {
         inputsDisabled = disabled;
