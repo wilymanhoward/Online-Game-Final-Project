@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
 using Photon.Realtime;
+using UnityEngine.Playables;
 
 public class Cel_MainMenu : MonoBehaviourPunCallbacks
 {
@@ -33,24 +34,24 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
     public GameObject playerStone2;
 
     [Header("Camera & Transitions Settings")]
-    public Transform mainCamera;
-    public Transform targetCameraPosition;
-    public float cameraMoveSpeed = 2f;
+    [Tooltip("PlayableDirector that plays the Menu Timeline instead of manual camera movement")]
+    public PlayableDirector menuTimeline;
     public float transitionDuration = 0.2f;
 
-    private bool isMovingCamera = false;
+    [Header("Cutscene Settings")]
+    [Tooltip("Assign the PlayableDirector that plays the start game cutscene")]
+    public PlayableDirector startTimeline;
+    
+    [Header("Cameras")]
+    public GameObject menuCamera;
+    public GameObject cutsceneCamera;
+
     private CanvasGroup panelToShowCanvasGroup;
     private Vector3[] initialStonesScales;
     private Vector3[] initialStonesPositions;
     private Vector3 initialPanelPosition;
     private Vector3 playerStone1Scale;
     private Vector3 playerStone2Scale;
-
-    // Cache starting camera transforms for escape key backward glide
-    private Vector3 initialCameraPosition;
-    private Quaternion initialCameraRotation;
-    private Vector3 targetCamPos;
-    private Quaternion targetCamRot;
 
     private string pendingRoomToJoin = "";
 
@@ -66,15 +67,6 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         else
         {
             if (headerText != null) headerText.text = "CREATE ROOM";
-        }
-
-        // Cache starting camera transforms
-        if (mainCamera != null)
-        {
-            initialCameraPosition = mainCamera.position;
-            initialCameraRotation = mainCamera.rotation;
-            targetCamPos = initialCameraPosition;
-            targetCamRot = initialCameraRotation;
         }
 
         // Ensure cursor is visible and unlocked on menu load
@@ -171,12 +163,11 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
                 obj.SetActive(false);
         }
 
-        if (mainCamera != null && targetCameraPosition != null)
+        if (menuTimeline != null)
         {
-            targetCamPos = targetCameraPosition.position;
-            targetCamRot = targetCameraPosition.rotation;
+            menuTimeline.Play();
         }
-        isMovingCamera = true;
+        
         StartTransition(panelToHide != null ? panelToHide : panelToShow, "Panel (1) Object", panel2ToShow, "Panel (2) Object");
     }
 
@@ -377,8 +368,28 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
                 inputRoomCodeStone.SetActive(false);
             }
             
-            PhotonNetwork.LoadLevel("Puzzle1");
+            StartCoroutine(PlayCutsceneAndTransition());
         }
+    }
+
+    private IEnumerator PlayCutsceneAndTransition()
+    {
+        // 0. Switch to the Cutscene Camera (if assigned)
+        if (menuCamera != null) menuCamera.SetActive(false);
+        if (cutsceneCamera != null) cutsceneCamera.SetActive(true);
+
+        // 1. Play the Cutscene Timeline
+        if (startTimeline != null)
+        {
+            startTimeline.Play();
+        }
+        
+        // 2. Wait for cutscene to finish playing based on its exact length
+        float waitTime = startTimeline != null ? (float)startTimeline.duration : 0f;
+        yield return new WaitForSeconds(waitTime);
+        
+        // 3. Finally, load the next scene
+        PhotonNetwork.LoadLevel("Puzzle1");
     }
 
     public void OnJoinRoomConfirmClicked()
@@ -548,12 +559,12 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
                 if (obj != null) obj.SetActive(true);
             }
 
-            // Slide camera back to start
-            if (mainCamera != null)
+            // Rewind and stop the timeline when going back to start
+            if (menuTimeline != null)
             {
-                targetCamPos = initialCameraPosition;
-                targetCamRot = initialCameraRotation;
-                isMovingCamera = true;
+                menuTimeline.time = 0;
+                menuTimeline.Evaluate();
+                menuTimeline.Stop();
             }
         }
         // 2. If Panel (3) is active, go back to Panel (2)
@@ -579,21 +590,6 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
 
     void Update()
     {
-        if (isMovingCamera && mainCamera != null)
-        {
-            // Smoothly move the camera to the target position and rotation
-            mainCamera.position = Vector3.Lerp(mainCamera.position, targetCamPos, Time.deltaTime * cameraMoveSpeed);
-            mainCamera.rotation = Quaternion.Slerp(mainCamera.rotation, targetCamRot, Time.deltaTime * cameraMoveSpeed);
-            
-            // Stop moving if close enough
-            if (Vector3.Distance(mainCamera.position, targetCamPos) < 0.01f)
-            {
-                mainCamera.position = targetCamPos;
-                mainCamera.rotation = targetCamRot;
-                isMovingCamera = false;
-            }
-        }
-
         // Handle go back with escape key
         if (Input.GetKeyDown(KeyCode.Escape))
         {
