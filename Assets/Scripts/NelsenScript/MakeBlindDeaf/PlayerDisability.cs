@@ -15,11 +15,17 @@ public class PlayerDisability : MonoBehaviour
 
     public void SetBlind(bool isBlind){
         IsBlindActive = isBlind;
-        BlindOverlay.SetActive(isBlind);
+        if (BlindOverlay != null)
+        {
+            BlindOverlay.SetActive(isBlind);
+        }
     }
 
     public void SetDeaf(bool isDeaf){
         IsDeafActive = isDeaf;
-        DeafOverlay.SetActive(isDeaf);
+        if (DeafOverlay != null)
+        {
+            DeafOverlay.SetActive(isDeaf);
+        }
     }
 }

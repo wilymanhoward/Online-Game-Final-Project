@@ -131,6 +131,8 @@ public class FirstPersonController : MonoBehaviourPun
     private bool isDead = false;
     public bool IsDead => isDead;
     private int clickCountToRespawn = 0;
+    private bool isLocalPlayer = true;
+    public bool isParalyzed = false;
     private GameObject deathOverlayObj;
     private UnityEngine.UI.Text deathClicksText;
     private UnityEngine.UI.Image deathProgressBarFill;
@@ -236,8 +238,26 @@ public class FirstPersonController : MonoBehaviourPun
         if (thumb02L) defaultThumb02L = thumb02L.localRotation;
         if (thumb03L) defaultThumb03L = thumb03L.localRotation;
 
+        // Determine if this specific player instance is local based on name and Photon role
+        isLocalPlayer = true;
+        if (PhotonNetwork.IsConnected)
+        {
+            if (gameObject.name == "Player1")
+            {
+                isLocalPlayer = PhotonNetwork.IsMasterClient;
+            }
+            else if (gameObject.name == "Player2")
+            {
+                isLocalPlayer = !PhotonNetwork.IsMasterClient;
+            }
+            else
+            {
+                isLocalPlayer = photonView.IsMine;
+            }
+        }
+
         // If this is a remote player, we don't control it
-        if (PhotonNetwork.IsConnected && !photonView.IsMine)
+        if (!isLocalPlayer)
         {
             // Disable CharacterController and FirstPersonController inputs
             if (controller != null) controller.enabled = false;
@@ -249,6 +269,10 @@ public class FirstPersonController : MonoBehaviourPun
             // Make sure the LineRenderer on this remote copy is disabled/destroyed so other players never see it
             var lr = GetComponent<LineRenderer>();
             if (lr != null) Destroy(lr);
+            
+            // Disable camera and listener on remote copy
+            var cam = GetComponentInChildren<Camera>(true);
+            if (cam != null) cam.gameObject.SetActive(false);
             
             return;
         }
@@ -298,7 +322,7 @@ public class FirstPersonController : MonoBehaviourPun
             }
         }
 
-        if (!PhotonNetwork.IsConnected || photonView.IsMine)
+        if (!PhotonNetwork.IsConnected || isLocalPlayer)
         {
             CreateDeathUI();
         }
@@ -326,9 +350,9 @@ public class FirstPersonController : MonoBehaviourPun
 
     void Update()
     {
-        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
 
-        bool disableMovement = inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptLook || inputReader.AreInputsDisabledExceptInteract);
+        bool disableMovement = isParalyzed || (inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptLook || inputReader.AreInputsDisabledExceptInteract));
 
         if (!disableMovement && Input.GetKeyDown(KeyCode.B) && !isDead)
         {
@@ -368,7 +392,7 @@ public class FirstPersonController : MonoBehaviourPun
         }
 
         // 1. Camera Look Rotation
-        bool disableLook = inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptInteract);
+        bool disableLook = isParalyzed || (inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptInteract));
         float mouseX = 0f;
         float mouseY = 0f;
         if (!disableLook)
@@ -1025,7 +1049,7 @@ public class FirstPersonController : MonoBehaviourPun
         }
 
         // Aiming Logic (Hold Right-Click) - only active if not currently throwing
-        if (Input.GetMouseButton(1) && !isThrowingAnim && (!PhotonNetwork.IsConnected || photonView.IsMine))
+        if (Input.GetMouseButton(1) && !isThrowingAnim && (!PhotonNetwork.IsConnected || isLocalPlayer))
         {
             isAiming = true;
             if (trajectoryLine != null) trajectoryLine.enabled = true;
@@ -1192,16 +1216,9 @@ public class FirstPersonController : MonoBehaviourPun
     private bool CompareSafeTag(Collider col, string tag)
     {
         if (col == null) return false;
-        #if UNITY_EDITOR
-        // Verify if tag is actually registered in the current editor session to prevent native console errors
-        if (System.Array.IndexOf(UnityEditorInternal.InternalEditorUtility.tags, tag) < 0)
-        {
-            return false;
-        }
-        #endif
         try
         {
-            return col.CompareTag(tag);
+            return col.gameObject.tag == tag;
         }
         catch
         {
@@ -1212,7 +1229,7 @@ public class FirstPersonController : MonoBehaviourPun
     private void OnTriggerEnter(Collider other)
     {
         // Only execute checkpoint saving and death zones for the local player
-        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
 
         if (CompareSafeTag(other, "Checkpoint"))
         {
@@ -1240,7 +1257,7 @@ public class FirstPersonController : MonoBehaviourPun
     private void OnControllerColliderHit(ControllerColliderHit hit)
     {
         // Handle solid physical checkpoints and death zones
-        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
 
         if (CompareSafeTag(hit.collider, "Checkpoint"))
         {
@@ -1268,7 +1285,7 @@ public class FirstPersonController : MonoBehaviourPun
     public void ResetAirTime()
     {
         // Only run for the local player client
-        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
 
         airTimeCounter = 0f;
         Debug.Log($"[FallDamage] Air time manually reset for {name}.");
@@ -1277,7 +1294,7 @@ public class FirstPersonController : MonoBehaviourPun
     public void Respawn()
     {
         // Only respawn the local player client
-        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
 
         if (!isDead)
         {
@@ -1514,7 +1531,7 @@ public class FirstPersonController : MonoBehaviourPun
     public void TriggerCameraShake(float duration, float magnitude)
     {
         // Only shake local player camera
-        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
 
         StartCoroutine(DoCameraShake(duration, magnitude));
     }
