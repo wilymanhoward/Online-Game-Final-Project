@@ -461,6 +461,37 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
             cg.alpha = 0f;
             blackScreenObject.SetActive(false);
         }
+
+        // 4. Wait for the rest of the cutscene
+        if (startTimeline != null)
+        {
+            float remainingWait = (float)startTimeline.duration - fadeDuration;
+            if (remainingWait > 0f)
+            {
+                yield return new WaitForSeconds(remainingWait);
+            }
+        }
+
+        // 5. Fade to black again right before loading the next scene
+        if (blackScreenObject != null)
+        {
+            blackScreenObject.SetActive(true);
+            CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
+            float fadeElapsed = 0f;
+            while (fadeElapsed < fadeDuration)
+            {
+                fadeElapsed += Time.deltaTime;
+                cg.alpha = Mathf.Clamp01(fadeElapsed / fadeDuration);
+                yield return null;
+            }
+            cg.alpha = 1f;
+        }
+
+        // 6. Finally, load the next scene
+        if (PhotonNetwork.IsMasterClient)
+        {
+            PhotonNetwork.LoadLevel("Puzzle1");
+        }
     }
 
     public void OnJoinRoomConfirmClicked()
