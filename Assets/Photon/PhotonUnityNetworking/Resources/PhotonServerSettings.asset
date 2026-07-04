@@ -47,6 +47,7 @@ MonoBehaviour:
   - SetHoldingTorchRPC
   - SetTorchStateRPC
   - PushLidOffRPC
+  - PickupKeyRPC
   DisableAutoOpenWizard: 1
   ShowSettings: 0
   DevRegionSetOnce: 1

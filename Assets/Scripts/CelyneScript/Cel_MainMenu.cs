@@ -414,9 +414,24 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
 
     private IEnumerator PlayCutsceneAndTransition()
     {
+        Debug.Log("[Transition] Started PlayCutsceneAndTransition");
+
+        // Ensure black screen image color has full alpha if an Image component exists
+        if (blackScreenObject != null)
+        {
+            UnityEngine.UI.Image bgImage = blackScreenObject.GetComponent<UnityEngine.UI.Image>();
+            if (bgImage != null)
+            {
+                Color c = bgImage.color;
+                c.a = 1f;
+                bgImage.color = c;
+            }
+        }
+
         // 0. Fade to black
         if (blackScreenObject != null)
         {
+            Debug.Log("[Transition] Fading to black...");
             blackScreenObject.SetActive(true);
             CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
             if (cg == null) cg = blackScreenObject.AddComponent<CanvasGroup>();
@@ -444,12 +459,15 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         // 2. Play the Cutscene Timeline
         if (startTimeline != null)
         {
+            Debug.Log("[Transition] Playing timeline...");
             startTimeline.Play();
+            yield return null; // Wait one frame for the timeline state to update to Playing
         }
         
         // 3. Fade back in from black
         if (blackScreenObject != null)
         {
+            Debug.Log("[Transition] Fading back in...");
             CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
             float fadeElapsed = 0f;
             while (fadeElapsed < fadeDuration)
@@ -462,35 +480,40 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
             blackScreenObject.SetActive(false);
         }
 
-        // 4. Wait for the rest of the cutscene
+        // 4. Wait for the rest of the cutscene to finish naturally
         if (startTimeline != null)
         {
-            float remainingWait = (float)startTimeline.duration - fadeDuration;
-            if (remainingWait > 0f)
-            {
-                yield return new WaitForSeconds(remainingWait);
-            }
-        }
+            Debug.Log("[Transition] Waiting for timeline to finish...");
+            float maxWaitTime = (float)(startTimeline.duration > 0 ? startTimeline.duration + 5f : 15f); 
+            float waitTimer = 0f;
 
-        // 5. Fade to black again right before loading the next scene
-        if (blackScreenObject != null)
-        {
-            blackScreenObject.SetActive(true);
-            CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
-            float fadeElapsed = 0f;
-            while (fadeElapsed < fadeDuration)
+            // Wait until it stops playing, but add a fallback timeout in case it's looping forever
+            while (startTimeline.state == PlayState.Playing && waitTimer < maxWaitTime)
             {
-                fadeElapsed += Time.deltaTime;
-                cg.alpha = Mathf.Clamp01(fadeElapsed / fadeDuration);
+                waitTimer += Time.deltaTime;
                 yield return null;
             }
-            cg.alpha = 1f;
+            
+            if (waitTimer >= maxWaitTime)
+            {
+                Debug.LogWarning("[Transition] Timeline wait timed out! Is the timeline set to Loop?");
+            }
+            else
+            {
+                Debug.Log("[Transition] Timeline finished naturally.");
+            }
         }
 
-        // 6. Finally, load the next scene
+        // 5. Instantly load the next scene without any extra delay
+        Debug.Log("[Transition] Attempting to load next scene: Puzzle1");
         if (PhotonNetwork.IsMasterClient)
         {
+            Debug.Log("[Transition] Calling PhotonNetwork.LoadLevel(\"Puzzle1\")...");
             PhotonNetwork.LoadLevel("Puzzle1");
+        }
+        else
+        {
+            Debug.LogWarning("[Transition] Not MasterClient, waiting for MasterClient to load level.");
         }
     }
 
