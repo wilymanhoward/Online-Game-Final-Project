@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
 using Photon.Realtime;
+using UnityEngine.Playables;
 
 public class Cel_MainMenu : MonoBehaviourPunCallbacks
 {
@@ -33,12 +34,32 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
     public GameObject playerStone2;
 
     [Header("Camera & Transitions Settings")]
-    public Transform mainCamera;
-    public Transform targetCameraPosition;
-    public float cameraMoveSpeed = 2f;
+    [Tooltip("PlayableDirector that plays the Menu Timeline instead of manual camera movement")]
+    public PlayableDirector menuTimeline;
     public float transitionDuration = 0.2f;
 
-    private bool isMovingCamera = false;
+    [Header("Cutscene Settings")]
+    [Tooltip("Assign the PlayableDirector that plays the start game cutscene")]
+    public PlayableDirector startTimeline;
+    [Header("Transition Settings")]
+    [Tooltip("Drag a UI Image/Panel GameObject here that is colored Black for fade transitions")]
+    public GameObject blackScreenObject;
+    public float fadeDuration = 1f;
+
+    [Header("Audio Settings")]
+    public AudioSource bgmSource;
+    public AudioClip bgmClip;
+    public AudioSource sfxSource;
+    public AudioClip buttonClickClip;
+
+    [Header("UI Canvas")]
+    [Tooltip("Drag the main UI canvas here to hide it when the game starts")]
+    public GameObject mainCanvas;
+
+    [Header("Cameras")]
+    public GameObject menuCamera;
+    public GameObject cutsceneCamera;
+
     private CanvasGroup panelToShowCanvasGroup;
     private Vector3[] initialStonesScales;
     private Vector3[] initialStonesPositions;
@@ -46,16 +67,17 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
     private Vector3 playerStone1Scale;
     private Vector3 playerStone2Scale;
 
-    // Cache starting camera transforms for escape key backward glide
-    private Vector3 initialCameraPosition;
-    private Quaternion initialCameraRotation;
-    private Vector3 targetCamPos;
-    private Quaternion targetCamRot;
-
     private string pendingRoomToJoin = "";
 
     private void Start()
     {
+        if (bgmSource != null && bgmClip != null)
+        {
+            bgmSource.clip = bgmClip;
+            bgmSource.loop = true;
+            bgmSource.Play();
+        }
+
         // Initiate Photon connection
         PhotonNetwork.AutomaticallySyncScene = true;
         if (!PhotonNetwork.IsConnected)
@@ -66,15 +88,6 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         else
         {
             if (headerText != null) headerText.text = "CREATE ROOM";
-        }
-
-        // Cache starting camera transforms
-        if (mainCamera != null)
-        {
-            initialCameraPosition = mainCamera.position;
-            initialCameraRotation = mainCamera.rotation;
-            targetCamPos = initialCameraPosition;
-            targetCamRot = initialCameraRotation;
         }
 
         // Ensure cursor is visible and unlocked on menu load
@@ -162,8 +175,18 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         }
     }
 
+    public void PlayClickSound()
+    {
+        if (sfxSource != null && buttonClickClip != null)
+        {
+            sfxSource.PlayOneShot(buttonClickClip);
+        }
+    }
+
     public void OnPlayClicked()
     {
+        PlayClickSound();
+
         // Hide all specified objects
         foreach (GameObject obj in objectsToHide)
         {
@@ -171,21 +194,23 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
                 obj.SetActive(false);
         }
 
-        if (mainCamera != null && targetCameraPosition != null)
+        if (menuTimeline != null)
         {
-            targetCamPos = targetCameraPosition.position;
-            targetCamRot = targetCameraPosition.rotation;
+            menuTimeline.Play();
         }
-        isMovingCamera = true;
+        
         StartTransition(panelToHide != null ? panelToHide : panelToShow, "Panel (1) Object", panel2ToShow, "Panel (2) Object");
     }
 
     public void OnConfirmNameClicked()
     {
+        PlayClickSound();
+
         string name = playerNameInput != null ? playerNameInput.text : "";
         if (string.IsNullOrEmpty(name))
         {
             name = "Player_" + Random.Range(1000, 9999);
+            if (playerNameInput != null) playerNameInput.text = name;
         }
         PhotonNetwork.NickName = name;
 
@@ -194,6 +219,8 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
 
     public void OnCreateGameClicked()
     {
+        PlayClickSound();
+
         // 1. Generate a random 5-digit room ID/code
         string roomCode = Random.Range(10000, 99999).ToString();
         
@@ -206,13 +233,15 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         // 3. Create the Photon room
         RoomOptions roomOptions = new RoomOptions { MaxPlayers = 2 };
         PhotonNetwork.CreateRoom(roomCode, roomOptions);
-
-        // 4. Transition UI and 3D objects to Panel (5)
-        StartTransition(panel3ToShow, "Panel (3) Object", panel5ToShow, "Panel (5) Object");
+        
+        // We do NOT call StartTransition here because OnJoinedRoom will be triggered automatically
+        // and handle the transition to Panel (5), preventing the UI flicker/lag.
     }
 
     public void OnJoinGameClicked()
     {
+        PlayClickSound();
+
         // Transition to Panel (4) so player can enter room ID/code
         StartTransition(panel3ToShow, "Panel (3) Object", panel4ToShow, "Panel (4) Object");
     }
@@ -366,6 +395,8 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
 
     public void OnCreateRoomClicked()
     {
+        PlayClickSound();
+
         // This is called when the creator clicks "Start" to launch the game
         if (PhotonNetwork.IsMasterClient)
         {
@@ -377,12 +408,65 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
                 inputRoomCodeStone.SetActive(false);
             }
             
-            PhotonNetwork.LoadLevel("Puzzle1");
+            StartCoroutine(PlayCutsceneAndTransition());
+        }
+    }
+
+    private IEnumerator PlayCutsceneAndTransition()
+    {
+        // 0. Fade to black
+        if (blackScreenObject != null)
+        {
+            blackScreenObject.SetActive(true);
+            CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
+            if (cg == null) cg = blackScreenObject.AddComponent<CanvasGroup>();
+            
+            float fadeElapsed = 0f;
+            while (fadeElapsed < fadeDuration)
+            {
+                fadeElapsed += Time.deltaTime;
+                cg.alpha = Mathf.Clamp01(fadeElapsed / fadeDuration);
+                yield return null;
+            }
+            cg.alpha = 1f;
+        }
+
+        // 1. Prepare cameras for transition (Direct Cut)
+        if (menuCamera != null) menuCamera.SetActive(false);
+        if (cutsceneCamera != null) cutsceneCamera.SetActive(true);
+
+        // Hide main UI Canvas
+        if (mainCanvas != null) mainCanvas.SetActive(false);
+
+        // Stop BGM
+        if (bgmSource != null) bgmSource.Stop();
+
+        // 2. Play the Cutscene Timeline
+        if (startTimeline != null)
+        {
+            startTimeline.Play();
+        }
+        
+        // 3. Fade back in from black
+        if (blackScreenObject != null)
+        {
+            CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
+            float fadeElapsed = 0f;
+            while (fadeElapsed < fadeDuration)
+            {
+                fadeElapsed += Time.deltaTime;
+                cg.alpha = 1f - Mathf.Clamp01(fadeElapsed / fadeDuration);
+                yield return null;
+            }
+            cg.alpha = 0f;
+            blackScreenObject.SetActive(false);
         }
     }
 
     public void OnJoinRoomConfirmClicked()
     {
+        PlayClickSound();
+
         if (!PhotonNetwork.IsConnectedAndReady)
         {
             if (headerText != null) headerText.text = "Not connected to Photon!";
@@ -529,6 +613,8 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
 
     public void OnExitClicked()
     {
+        PlayClickSound();
+
         Application.Quit();
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
@@ -548,12 +634,12 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
                 if (obj != null) obj.SetActive(true);
             }
 
-            // Slide camera back to start
-            if (mainCamera != null)
+            // Rewind and stop the timeline when going back to start
+            if (menuTimeline != null)
             {
-                targetCamPos = initialCameraPosition;
-                targetCamRot = initialCameraRotation;
-                isMovingCamera = true;
+                menuTimeline.time = 0;
+                menuTimeline.Evaluate();
+                menuTimeline.Stop();
             }
         }
         // 2. If Panel (3) is active, go back to Panel (2)
@@ -579,24 +665,10 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
 
     void Update()
     {
-        if (isMovingCamera && mainCamera != null)
-        {
-            // Smoothly move the camera to the target position and rotation
-            mainCamera.position = Vector3.Lerp(mainCamera.position, targetCamPos, Time.deltaTime * cameraMoveSpeed);
-            mainCamera.rotation = Quaternion.Slerp(mainCamera.rotation, targetCamRot, Time.deltaTime * cameraMoveSpeed);
-            
-            // Stop moving if close enough
-            if (Vector3.Distance(mainCamera.position, targetCamPos) < 0.01f)
-            {
-                mainCamera.position = targetCamPos;
-                mainCamera.rotation = targetCamRot;
-                isMovingCamera = false;
-            }
-        }
-
         // Handle go back with escape key
         if (Input.GetKeyDown(KeyCode.Escape))
         {
+            PlayClickSound();
             GoToPreviousMenu();
         }
     }
