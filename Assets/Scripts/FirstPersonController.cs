@@ -522,12 +522,12 @@ public class FirstPersonController : MonoBehaviourPun
                 // Player has just landed
                 if (airTimeCounter >= fatalAirTimeThreshold)
                 {
-                    Debug.Log($"[FallDamage] Player landed after {airTimeCounter:F2} seconds of air time. Fatal threshold was {fatalAirTimeThreshold}s. Respawning.");
+                    // Debug.Log($"[FallDamage] Player landed after {airTimeCounter:F2} seconds of air time. Fatal threshold was {fatalAirTimeThreshold}s. Respawning.");
                     Respawn();
                 }
                 else
                 {
-                    Debug.Log($"[FallDamage] Player landed safely after {airTimeCounter:F2} seconds of air time.");
+                    // Debug.Log($"[FallDamage] Player landed safely after {airTimeCounter:F2} seconds of air time.");
                 }
                 airTimeCounter = 0f;
             }

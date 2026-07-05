@@ -99,7 +99,7 @@ public class InteractWhenCrossed : MonoBehaviour
             if (!playersInside.Contains(playerTransform))
             {
                 playersInside.Add(playerTransform);
-                Debug.Log($"[InteractWhenCrossed] Player {playerTransform.name} entered trigger {gameObject.name}. Total players inside: {playersInside.Count}");
+                // Debug.Log($"[InteractWhenCrossed] Player {playerTransform.name} entered trigger {gameObject.name}. Total players inside: {playersInside.Count}");
             }
 
             if (multiplePeopleRequired && secondTrigger != null)
@@ -133,7 +133,7 @@ public class InteractWhenCrossed : MonoBehaviour
             if (playersInside.Contains(playerTransform))
             {
                 playersInside.Remove(playerTransform);
-                Debug.Log($"[InteractWhenCrossed] Player {playerTransform.name} exited trigger {gameObject.name}. Total players inside: {playersInside.Count}");
+                // Debug.Log($"[InteractWhenCrossed] Player {playerTransform.name} exited trigger {gameObject.name}. Total players inside: {playersInside.Count}");
             }
 
             if (multiplePeopleRequired && secondTrigger != null)
@@ -210,7 +210,7 @@ public class InteractWhenCrossed : MonoBehaviour
                 {
                     isOnePlayerActive = true;
                     hasTriggeredOnePlayer = true;
-                    Debug.Log($"[InteractWhenCrossed] 1 Player Crossed: {gameObject.name} by {player?.name}");
+                    // Debug.Log($"[InteractWhenCrossed] 1 Player Crossed: {gameObject.name} by {player?.name}");
                     onCross?.Invoke(player);
                 }
             }
@@ -225,7 +225,7 @@ public class InteractWhenCrossed : MonoBehaviour
                 {
                     isBothPlayersActive = true;
                     hasTriggeredBothPlayers = true;
-                    Debug.Log($"[InteractWhenCrossed] Both Players Crossed: {gameObject.name} by {player?.name}");
+                    // Debug.Log($"[InteractWhenCrossed] Both Players Crossed: {gameObject.name} by {player?.name}");
                     onBothCross?.Invoke(player);
                 }
             }
@@ -245,7 +245,7 @@ public class InteractWhenCrossed : MonoBehaviour
         if (isBothPlayersActive && playersInside.Count < 2)
         {
             isBothPlayersActive = false;
-            Debug.Log($"[InteractWhenCrossed] Both Players Exited: {gameObject.name} by {player?.name}");
+            // Debug.Log($"[InteractWhenCrossed] Both Players Exited: {gameObject.name} by {player?.name}");
             onBothExit?.Invoke(player);
         }
 
@@ -253,7 +253,7 @@ public class InteractWhenCrossed : MonoBehaviour
         if (isOnePlayerActive && physicalPlayersInside.Count < 1)
         {
             isOnePlayerActive = false;
-            Debug.Log($"[InteractWhenCrossed] 1 Player Exited: {gameObject.name} by {player?.name}");
+            // Debug.Log($"[InteractWhenCrossed] 1 Player Exited: {gameObject.name} by {player?.name}");
             onExit?.Invoke(player);
         }
 

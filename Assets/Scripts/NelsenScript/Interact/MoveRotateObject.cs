@@ -94,7 +94,7 @@ public class MoveRotateObject : MonoBehaviour
 
             if (progress >= 1f && prevProgress < 1f)
             {
-                Debug.Log($"[MoveRotateObject] {name} reached opening point (open position). Invoking OnReachedOpen.");
+                // Debug.Log($"[MoveRotateObject] {name} reached opening point (open position). Invoking OnReachedOpen.");
                 OnReachedOpen?.Invoke();
             }
         }
@@ -104,7 +104,7 @@ public class MoveRotateObject : MonoBehaviour
 
             if (progress <= 0f && prevProgress > 0f)
             {
-                Debug.Log($"[MoveRotateObject] {name} reached closing point (closed position). Invoking OnReachedClosed.");
+                // Debug.Log($"[MoveRotateObject] {name} reached closing point (closed position). Invoking OnReachedClosed.");
                 OnReachedClosed?.Invoke();
             }
         }
@@ -174,7 +174,7 @@ public class MoveRotateObject : MonoBehaviour
     private void ExecuteOpen(float openSpeed)
     {
         currentOpenSpeed = openSpeed == 0f ? baseOpenSpeed : openSpeed;
-        Debug.Log($"[MoveRotateObject] {name} Activated (ExecuteOpen). Current progress: {progress}.");
+        // Debug.Log($"[MoveRotateObject] {name} Activated (ExecuteOpen). Current progress: {progress}.");
         isActive = true;
         targetPosition = openPosition;
         targetRotation = openRotationQuaternion;
@@ -205,11 +205,11 @@ public class MoveRotateObject : MonoBehaviour
     {
         if (!force && doNotDisturb && IsMoving)
         {
-            Debug.Log($"[MoveRotateObject] {name} Deactivate blocked by doNotDisturb (currently moving).");
+            // Debug.Log($"[MoveRotateObject] {name} Deactivate blocked by doNotDisturb (currently moving).");
             return;
         }
 
-        Debug.Log($"[MoveRotateObject] {name} DeactivateInternal starting close. Current progress: {progress}, speed: {closeSpeed} (base: {baseCloseSpeed}), force: {force}.");
+        // Debug.Log($"[MoveRotateObject] {name} DeactivateInternal starting close. Current progress: {progress}, speed: {closeSpeed} (base: {baseCloseSpeed}), force: {force}.");
 
         if (openCoroutine != null)
         {
@@ -218,7 +218,7 @@ public class MoveRotateObject : MonoBehaviour
         }
 
         currentCloseSpeed = closeSpeed == 0f ? baseCloseSpeed : closeSpeed;
-        Debug.Log($"{name} Deactivated");
+        // Debug.Log($"{name} Deactivated");
         isActive = false;
         targetPosition = closedPosition;
         targetRotation = closedRotationQuaternion;
