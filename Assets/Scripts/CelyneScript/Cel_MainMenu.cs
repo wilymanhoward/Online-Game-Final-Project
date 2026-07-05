@@ -68,6 +68,7 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
     private Vector3 playerStone2Scale;
 
     private string pendingRoomToJoin = "";
+    private bool isStartingGame = false;
 
     private void Start()
     {
@@ -408,15 +409,56 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
                 inputRoomCodeStone.SetActive(false);
             }
             
-            StartCoroutine(PlayCutsceneAndTransition());
+            // Set custom room property to signal game start
+            ExitGames.Client.Photon.Hashtable props = new ExitGames.Client.Photon.Hashtable();
+            props["StartGame"] = true;
+            PhotonNetwork.CurrentRoom.SetCustomProperties(props);
+        }
+    }
+
+    public override void OnRoomPropertiesUpdate(ExitGames.Client.Photon.Hashtable propertiesThatChanged)
+    {
+        if (propertiesThatChanged.ContainsKey("StartGame"))
+        {
+            object val = propertiesThatChanged["StartGame"];
+            if (val != null && (bool)val)
+            {
+                if (!isStartingGame)
+                {
+                    isStartingGame = true;
+                    
+                    // Hide Input Room Code Stone when starting
+                    if (inputRoomCodeStone != null)
+                    {
+                        inputRoomCodeStone.SetActive(false);
+                    }
+                    
+                    StartCoroutine(PlayCutsceneAndTransition());
+                }
+            }
         }
     }
 
     private IEnumerator PlayCutsceneAndTransition()
     {
+        Debug.Log("[Transition] Started PlayCutsceneAndTransition");
+
+        // Ensure black screen image color has full alpha if an Image component exists
+        if (blackScreenObject != null)
+        {
+            UnityEngine.UI.Image bgImage = blackScreenObject.GetComponent<UnityEngine.UI.Image>();
+            if (bgImage != null)
+            {
+                Color c = bgImage.color;
+                c.a = 1f;
+                bgImage.color = c;
+            }
+        }
+
         // 0. Fade to black
         if (blackScreenObject != null)
         {
+            Debug.Log("[Transition] Fading to black...");
             blackScreenObject.SetActive(true);
             CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
             if (cg == null) cg = blackScreenObject.AddComponent<CanvasGroup>();
@@ -435,8 +477,19 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         if (menuCamera != null) menuCamera.SetActive(false);
         if (cutsceneCamera != null) cutsceneCamera.SetActive(true);
 
-        // Hide main UI Canvas
-        if (mainCanvas != null) mainCanvas.SetActive(false);
+        // Hide main UI Canvas by disabling the Canvas component (keeps coroutines running)
+        if (mainCanvas != null)
+        {
+            Canvas canvasComp = mainCanvas.GetComponent<Canvas>();
+            if (canvasComp != null)
+            {
+                canvasComp.enabled = false;
+            }
+            else
+            {
+                mainCanvas.SetActive(false);
+            }
+        }
 
         // Stop BGM
         if (bgmSource != null) bgmSource.Stop();
@@ -444,12 +497,15 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         // 2. Play the Cutscene Timeline
         if (startTimeline != null)
         {
+            Debug.Log("[Transition] Playing timeline...");
             startTimeline.Play();
+            yield return null; // Wait one frame for the timeline state to update to Playing
         }
         
         // 3. Fade back in from black
         if (blackScreenObject != null)
         {
+            Debug.Log("[Transition] Fading back in...");
             CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
             float fadeElapsed = 0f;
             while (fadeElapsed < fadeDuration)
@@ -462,35 +518,29 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
             blackScreenObject.SetActive(false);
         }
 
-        // 4. Wait for the rest of the cutscene
+        // 4. Wait for the rest of the cutscene to finish naturally
         if (startTimeline != null)
         {
-            float remainingWait = (float)startTimeline.duration - fadeDuration;
-            if (remainingWait > 0f)
+            Debug.Log("[Transition] Waiting for timeline to finish...");
+            // Subtract the fade-in duration since the timeline was already playing during it
+            float remainingTime = (float)startTimeline.duration - fadeDuration;
+            if (remainingTime > 0f)
             {
-                yield return new WaitForSeconds(remainingWait);
+                yield return new WaitForSeconds(remainingTime);
             }
+            Debug.Log("[Transition] Timeline finished naturally.");
         }
 
-        // 5. Fade to black again right before loading the next scene
-        if (blackScreenObject != null)
-        {
-            blackScreenObject.SetActive(true);
-            CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
-            float fadeElapsed = 0f;
-            while (fadeElapsed < fadeDuration)
-            {
-                fadeElapsed += Time.deltaTime;
-                cg.alpha = Mathf.Clamp01(fadeElapsed / fadeDuration);
-                yield return null;
-            }
-            cg.alpha = 1f;
-        }
-
-        // 6. Finally, load the next scene
+        // 5. Instantly load the next scene without any extra delay
+        Debug.Log("[Transition] Attempting to load next scene: Puzzle1");
         if (PhotonNetwork.IsMasterClient)
         {
+            Debug.Log("[Transition] Calling PhotonNetwork.LoadLevel(\"Puzzle1\")...");
             PhotonNetwork.LoadLevel("Puzzle1");
+        }
+        else
+        {
+            Debug.LogWarning("[Transition] Not MasterClient, waiting for MasterClient to load level.");
         }
     }
 

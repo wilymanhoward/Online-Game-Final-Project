@@ -64,6 +64,11 @@ public class PhotonVoiceChat : MonoBehaviourPun
 
     void Update()
     {
+        if (!PhotonNetwork.IsConnectedAndReady || !PhotonNetwork.InRoom)
+        {
+            return;
+        }
+
         if (photonView.IsMine)
         {
             // Toggle Mic when pressing R

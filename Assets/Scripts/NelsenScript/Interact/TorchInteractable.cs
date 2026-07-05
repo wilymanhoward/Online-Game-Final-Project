@@ -6,6 +6,10 @@ public class TorchInteractable : MonoBehaviour, IInteractable
 {
     private PhotonView pv;
     private bool isPickedUp = false;
+    public bool IsPickedUp => isPickedUp;
+
+    private float lastInteractTime = 0f;
+    private const float INTERACT_COOLDOWN = 0.8f;
 
     [Tooltip("Optional reference to the specific torch mesh/object to hide. If left unassigned, it will look for a child with 'Pickup' or 'Torch' in its name, or default to this GameObject.")]
     public GameObject torchObjectToHide;
@@ -74,15 +78,25 @@ public class TorchInteractable : MonoBehaviour, IInteractable
 
     public void Interact()
     {
-        // Find the local player client triggering the interaction
-        FirstPersonController localPlayer = null;
-        var players = FindObjectsOfType<FirstPersonController>();
-        foreach (var p in players)
+        if (Time.time - lastInteractTime < INTERACT_COOLDOWN)
         {
-            if (!PhotonNetwork.IsConnected || p.photonView.IsMine)
+            Debug.Log($"[Torch] Interaction cooldown active. Remaining: {INTERACT_COOLDOWN - (Time.time - lastInteractTime):F2}s");
+            return;
+        }
+        lastInteractTime = Time.time;
+
+        // Find the local player client triggering the interaction
+        FirstPersonController localPlayer = FirstPersonController.InteractingPlayer;
+        if (localPlayer == null)
+        {
+            var players = FindObjectsOfType<FirstPersonController>();
+            foreach (var p in players)
             {
-                localPlayer = p;
-                break;
+                if (p.IsLocalPlayer)
+                {
+                    localPlayer = p;
+                    break;
+                }
             }
         }
 
@@ -95,13 +109,14 @@ public class TorchInteractable : MonoBehaviour, IInteractable
                 {
                     // Trigger the place animation, and show the wall torch at the release point (0.3 seconds in)
                     localPlayer.TriggerPlaceTorchAnimation(() => {
-                        // Set wall torch active state locally instantly
-                        SetTorchStateLocal(false);
-                        
-                        // Sync placement back across network
+                        // Sync placement back across network (use RpcTarget.All to avoid buffered RPC restrictions on non-owners)
                         if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0)
                         {
-                            pv.RPC("SetTorchStateRPC", RpcTarget.OthersBuffered, false);
+                            pv.RPC("SetTorchStateRPC", RpcTarget.All, false);
+                        }
+                        else
+                        {
+                            SetTorchStateLocal(false);
                         }
                     });
                 }
@@ -113,13 +128,14 @@ public class TorchInteractable : MonoBehaviour, IInteractable
                 {
                     localPlayer.SetHoldingTorch(true);
                     
-                    // Set wall torch active state locally instantly
-                    SetTorchStateLocal(true);
-                    
-                    // Sync pickup across network
+                    // Sync pickup across network (use RpcTarget.All to avoid buffered RPC restrictions on non-owners)
                     if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0)
                     {
-                        pv.RPC("SetTorchStateRPC", RpcTarget.OthersBuffered, true);
+                        pv.RPC("SetTorchStateRPC", RpcTarget.All, true);
+                    }
+                    else
+                    {
+                        SetTorchStateLocal(true);
                     }
                 }
             }
@@ -134,6 +150,7 @@ public class TorchInteractable : MonoBehaviour, IInteractable
 
     private void SetTorchStateLocal(bool pickedUp)
     {
+        Debug.Log($"[Torch] SetTorchStateLocal: pickedUp={pickedUp}");
         isPickedUp = pickedUp;
         
         GameObject target = torchObjectToHide != null ? torchObjectToHide : gameObject;
@@ -149,6 +166,26 @@ public class TorchInteractable : MonoBehaviour, IInteractable
         foreach (Transform child in target.transform)
         {
             child.gameObject.SetActive(!pickedUp);
+        }
+
+        // Hide/show any sibling GameObject named "Torch" (which is the CelyneAssets mesh wrapper containing the wall torch)
+        if (transform.parent != null)
+        {
+            Transform siblingTorch = transform.parent.Find("Torch");
+            if (siblingTorch != null)
+            {
+                var siblingMR = siblingTorch.GetComponent<MeshRenderer>();
+                if (siblingMR != null)
+                {
+                    siblingMR.enabled = !pickedUp;
+                }
+
+                var siblingCol = siblingTorch.GetComponent<Collider>();
+                if (siblingCol != null)
+                {
+                    siblingCol.enabled = !pickedUp;
+                }
+            }
         }
     }
 

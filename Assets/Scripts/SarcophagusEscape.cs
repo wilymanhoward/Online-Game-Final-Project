@@ -1,33 +1,62 @@
 using UnityEngine;
+using UnityEngine.Playables;
+using UnityEngine.UI;
 using Photon.Pun;
+using System.Collections;
 
 public class SarcophagusEscape : MonoBehaviourPun
 {
     [Header("Sarcophagus Elements")]
+    [Tooltip("Check this if this sarcophagus is for Player 1. Uncheck for Player 2.")]
+    public bool isForPlayer1 = true;
     public GameObject sarcophagusLid;
-    public GameObject player1;
-    public int requiredClicks = 10;
+    public GameObject targetPlayer;
+    public int requiredClicks = 5;
     
     [Header("Lid Physics Settings")]
     public float pushForce = 8f;
     public Vector3 pushDirection = new Vector3(0f, 1f, 3f); // Push upward and forward
+
+    [Header("Timelines (Player 1)")]
+    public PlayableDirector p1_Timeline1;
+    public PlayableDirector p1_Timeline2;
+
+    [Header("Timelines (Player 2)")]
+    public PlayableDirector p2_Timeline1;
+    public PlayableDirector p2_Timeline2;
+
+    [Header("Input Options")]
+    public InputReader inputReader; // Optional, can use E key fallback
+    
+    [Header("UI Options")]
+    [Tooltip("Assign your own Press E UI here. It will hide after the first press, showing the progress bar.")]
+    public GameObject customPressEUI;
 
     private int clickCount = 0;
     private FirstPersonController fpc;
     private bool isEscaped = false;
     private Vector3 initialLidLocalPos;
 
+    // UI Elements
+    private GameObject sequenceUIObj;
+    private Text promptText;
+    private Image progressBarFill;
+    private CanvasGroup uiCanvasGroup;
+    private bool isWaitingForSpam = false;
+
     private void Start()
     {
-        if (player1 == null)
+        // 1. Find the target player (Player1 or Player2)
+        if (targetPlayer == null)
         {
-            player1 = GameObject.Find("Player1");
+            targetPlayer = GameObject.Find(isForPlayer1 ? "Player1" : "Player2");
         }
 
         if (sarcophagusLid == null)
         {
             // Try to find the user's custom sarcophagus and lid in the hierarchy first
-            GameObject customSarc = GameObject.Find("Player 1 Sarcophagus");
+            string sarcName = isForPlayer1 ? "Player 1 Sarcophagus" : "Player 2 Sarcophagus";
+            GameObject customSarc = GameObject.Find(sarcName);
             if (customSarc != null)
             {
                 Transform lidTrans = customSarc.transform.Find("Lid");
@@ -42,7 +71,7 @@ public class SarcophagusEscape : MonoBehaviourPun
             {
                 float closestDist = float.MaxValue;
                 GameObject closestLid = null;
-                Vector3 targetRefPos = player1 != null ? player1.transform.position : new Vector3(-1.20f, 0.01f, -2.07f);
+                Vector3 targetRefPos = targetPlayer != null ? targetPlayer.transform.position : new Vector3(-1.20f, 0.01f, -2.07f);
 
                 GameObject[] allObjects = GameObject.FindObjectsOfType<GameObject>();
                 foreach (GameObject go in allObjects)
@@ -66,56 +95,282 @@ public class SarcophagusEscape : MonoBehaviourPun
             initialLidLocalPos = sarcophagusLid.transform.localPosition;
         }
 
-        // Only lock controls and position for the local Player 1 (Master Client)
-        if (PhotonNetwork.IsConnected && !PhotonNetwork.IsMasterClient)
+        // Determine if the local player is the target of THIS sarcophagus
+        bool isMySarcophagus = false;
+        if (!PhotonNetwork.IsConnected)
         {
-            return;
+            isMySarcophagus = true; // Offline testing
+        }
+        else
+        {
+            isMySarcophagus = isForPlayer1 ? PhotonNetwork.IsMasterClient : !PhotonNetwork.IsMasterClient;
         }
 
-        if (player1 != null)
+        // Lock the targeted player in the sarcophagus
+        if (isMySarcophagus)
         {
-            fpc = player1.GetComponent<FirstPersonController>();
-            if (fpc != null)
+            if (targetPlayer != null)
             {
-                // Lock player in sarcophagus
-                fpc.isParalyzed = true;
-                
-                // Position player inside the sarcophagus base
-                player1.transform.position = new Vector3(-1.24f, 0.4f, -2.10f);
+                fpc = targetPlayer.GetComponent<FirstPersonController>();
+                if (fpc != null)
+                {
+                    fpc.isParalyzed = true;
+                    fpc.originalNearClip = 0.26f; // Set default post-escape near clip
+                    // Position player inside their respective sarcophagus base
+                    if (isForPlayer1)
+                    {
+                        targetPlayer.transform.position = new Vector3(-1.24f, 0.4f, -2.10f);
+                    }
+                    else
+                    {
+                        targetPlayer.transform.position = new Vector3(-11.531f, 0.09128681f, 15.23f);
+                    }
+                }
             }
+
+            // Set camera clipping plane near to 0.15 while inside the Sarcophagus
+            Camera mainCam = Camera.main;
+            if (mainCam != null)
+            {
+                mainCam.nearClipPlane = 0.15f;
+            }
+
+            CreateSpamUI();
+        }
+
+        if (inputReader != null)
+        {
+            inputReader.OnInteract += HandleInteractPress;
+        }
+
+        // Start the sequence
+        StartCoroutine(RunSpawnSequence(isMySarcophagus));
+    }
+
+    private void OnDestroy()
+    {
+        if (inputReader != null)
+        {
+            inputReader.OnInteract -= HandleInteractPress;
+        }
+    }
+
+    private IEnumerator RunSpawnSequence(bool isMySarcophagus)
+    {
+        // Select timelines based on who this sarcophagus is for
+        PlayableDirector t1 = isForPlayer1 ? p1_Timeline1 : p2_Timeline1;
+        PlayableDirector t2 = isForPlayer1 ? p1_Timeline2 : p2_Timeline2;
+
+        // 1. Play first timeline
+        if (t1 != null)
+        {
+            t1.gameObject.SetActive(true);
+            t1.Play();
+            yield return null;
+            while (t1.state == PlayState.Playing)
+            {
+                yield return null;
+            }
+            
+            // Wait 1 second after it finishes before removing it
+            yield return new WaitForSeconds(1.0f);
+            
+            // Disable timeline to clear stuck subtitles
+            t1.gameObject.SetActive(false);
+        }
+
+        if (isMySarcophagus)
+        {
+            // This client gets the Spam E UI to escape their sarcophagus
+            clickCount = 0;
+            UpdateUI();
+            
+            // Show the user's custom UI first, and make sure my UI is hidden
+            if (customPressEUI != null) customPressEUI.SetActive(true);
+            sequenceUIObj.SetActive(false);
+
+            isWaitingForSpam = true;
+
+            // Wait for the very FIRST click to swap the UIs
+            while (clickCount < 1)
+            {
+                yield return null;
+            }
+
+            // Hide user's custom UI and fade in the progress bar UI
+            if (customPressEUI != null) customPressEUI.SetActive(false);
+            
+            sequenceUIObj.SetActive(true);
+            float fade = 0f;
+            while (fade < 1f)
+            {
+                fade += Time.deltaTime * 3f;
+                uiCanvasGroup.alpha = Mathf.Clamp01(fade);
+                yield return null;
+            }
+            
+            // Wait until the remaining clicks are met
+            while (clickCount < requiredClicks)
+            {
+                yield return null;
+            }
+
+            isWaitingForSpam = false;
+
+            fade = 1f;
+            while (fade > 0f)
+            {
+                fade -= Time.deltaTime * 3f;
+                uiCanvasGroup.alpha = Mathf.Clamp01(fade);
+                yield return null;
+            }
+            sequenceUIObj.SetActive(false);
+
+            // Escape!
+            EscapeSarcophagus();
+        }
+
+        // Both players wait for the escape to be fully triggered
+        // (EscapeSarcophagus sets isEscaped over RPC)
+        yield return new WaitUntil(() => isEscaped);
+
+        // Optional small delay after lid pops off before playing audio
+        yield return new WaitForSeconds(0.5f);
+
+        // 2. Play second timeline
+        if (t2 != null)
+        {
+            t2.gameObject.SetActive(true);
+            t2.Play();
+            yield return null;
+            while (t2.state == PlayState.Playing)
+            {
+                yield return null;
+            }
+
+            // Disable timeline to clear stuck subtitles
+            t2.gameObject.SetActive(false);
+        }
+    }
+
+    private void HandleInteractPress()
+    {
+        if (isWaitingForSpam && !isEscaped)
+        {
+            RegisterClick();
         }
     }
 
     private void Update()
     {
-        if (isEscaped) return;
-
-        // Only Player 1 (Master Client / host) handles the escape clicks
-        if (PhotonNetwork.IsConnected && !PhotonNetwork.IsMasterClient) return;
-
-        if (Input.GetMouseButtonDown(0))
+        // Fallback to KeyCode.E if inputReader is missing
+        if (isWaitingForSpam && !isEscaped && inputReader == null)
         {
-            clickCount++;
-            Debug.Log($"[SarcophagusEscape] Click {clickCount}/{requiredClicks} registered.");
-            
-            // Shake lid and camera for push feedback
-            if (sarcophagusLid != null)
+            if (Input.GetKeyDown(KeyCode.E))
             {
-                StartCoroutine(ShakeLid());
-            }
-            if (fpc != null)
-            {
-                fpc.TriggerCameraShake(0.15f, 0.05f);
-            }
-
-            if (clickCount >= requiredClicks)
-            {
-                EscapeSarcophagus();
+                RegisterClick();
             }
         }
     }
 
-    private System.Collections.IEnumerator ShakeLid()
+    private void RegisterClick()
+    {
+        clickCount++;
+        Debug.Log($"[SarcophagusEscape] Click {clickCount}/{requiredClicks} registered.");
+        
+        UpdateUI();
+
+        if (sarcophagusLid != null)
+        {
+            StartCoroutine(ShakeLid());
+        }
+        
+        if (fpc != null)
+        {
+            fpc.TriggerCameraShake(0.15f, 0.05f);
+        }
+    }
+
+    private void CreateSpamUI()
+    {
+        sequenceUIObj = new GameObject("SpawnSequenceUI");
+        Canvas canvas = sequenceUIObj.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 900;
+        
+        var scaler = sequenceUIObj.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        
+        sequenceUIObj.AddComponent<GraphicRaycaster>();
+        uiCanvasGroup = sequenceUIObj.AddComponent<CanvasGroup>();
+        uiCanvasGroup.alpha = 0f;
+
+        GameObject panelObj = new GameObject("PromptPanel");
+        panelObj.transform.SetParent(sequenceUIObj.transform, false);
+        var panelImage = panelObj.AddComponent<Image>();
+        panelImage.color = new Color(0f, 0f, 0f, 0.7f);
+        
+        var rectPanel = panelObj.GetComponent<RectTransform>();
+        rectPanel.anchorMin = new Vector2(0.5f, 0.2f);
+        rectPanel.anchorMax = new Vector2(0.5f, 0.2f);
+        rectPanel.anchoredPosition = Vector2.zero;
+        rectPanel.sizeDelta = new Vector2(500f, 150f);
+
+        GameObject textObj = new GameObject("PromptText");
+        textObj.transform.SetParent(panelObj.transform, false);
+        promptText = textObj.AddComponent<Text>();
+        promptText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        promptText.text = "SPAM 'E' TO ESCAPE";
+        promptText.fontSize = 32;
+        promptText.alignment = TextAnchor.MiddleCenter;
+        promptText.color = Color.white;
+        
+        var rectText = textObj.GetComponent<RectTransform>();
+        rectText.anchorMin = new Vector2(0.5f, 1f);
+        rectText.anchorMax = new Vector2(0.5f, 1f);
+        rectText.anchoredPosition = new Vector2(0f, -40f);
+        rectText.sizeDelta = new Vector2(480f, 50f);
+
+        GameObject barBgObj = new GameObject("BarBackground");
+        barBgObj.transform.SetParent(panelObj.transform, false);
+        var barBgImage = barBgObj.AddComponent<Image>();
+        barBgImage.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+        
+        var rectBarBg = barBgObj.GetComponent<RectTransform>();
+        rectBarBg.anchorMin = new Vector2(0.5f, 0f);
+        rectBarBg.anchorMax = new Vector2(0.5f, 0f);
+        rectBarBg.anchoredPosition = new Vector2(0f, 40f);
+        rectBarBg.sizeDelta = new Vector2(400f, 30f);
+
+        GameObject barFillObj = new GameObject("BarFill");
+        barFillObj.transform.SetParent(barBgObj.transform, false);
+        progressBarFill = barFillObj.AddComponent<Image>();
+        progressBarFill.color = new Color(0.9f, 0.1f, 0.1f, 1f); // Dark Red
+        
+        var rectBarFill = barFillObj.GetComponent<RectTransform>();
+        rectBarFill.anchorMin = new Vector2(0f, 0f);
+        rectBarFill.anchorMax = new Vector2(0f, 1f);
+        rectBarFill.pivot = new Vector2(0f, 0.5f);
+        rectBarFill.anchoredPosition = Vector2.zero;
+        rectBarFill.sizeDelta = new Vector2(0f, 0f);
+
+        sequenceUIObj.SetActive(false);
+    }
+
+    private int currentClicks => clickCount;
+
+    private void UpdateUI()
+    {
+        if (progressBarFill != null)
+        {
+            float fillPct = Mathf.Clamp01((float)currentClicks / requiredClicks);
+            var rect = progressBarFill.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(fillPct * 400f, 0f);
+        }
+    }
+
+    private IEnumerator ShakeLid()
     {
         float elapsed = 0f;
         float duration = 0.1f;
@@ -132,7 +387,6 @@ public class SarcophagusEscape : MonoBehaviourPun
 
     private void EscapeSarcophagus()
     {
-        isEscaped = true;
         Debug.Log("[SarcophagusEscape] Escape triggered! Releasing player.");
         
         if (fpc != null)
@@ -140,14 +394,19 @@ public class SarcophagusEscape : MonoBehaviourPun
             fpc.isParalyzed = false;
         }
 
-        // Push the lid off over the network on all clients
+        // Restore camera clipping plane near to 0.25 after opening the lid
+        Camera mainCam = Camera.main;
+        if (mainCam != null)
+        {
+            mainCam.nearClipPlane = 0.25f;
+        }
+
         if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
             photonView.RPC("PushLidOffRPC", RpcTarget.AllBuffered);
         }
         else
         {
-            Debug.Log("[SarcophagusEscape] Offline/Not in room. Playing animation locally.");
             PushLidOffRPC();
         }
     }
@@ -155,57 +414,42 @@ public class SarcophagusEscape : MonoBehaviourPun
     [PunRPC]
     private void PushLidOffRPC()
     {
-        Debug.Log("[SarcophagusEscape] PushLidOffRPC called.");
-        if (sarcophagusLid == null)
-        {
-            Debug.LogError("[SarcophagusEscape] Cannot animate: sarcophagusLid is NULL!");
-            return;
-        }
+        isEscaped = true;
+        Debug.Log("[SarcophagusEscape] PushLidOffRPC called. isEscaped = true");
+        if (sarcophagusLid == null) return;
 
-        // Run smooth procedural rotation and slide
         StartCoroutine(RotateLidCoroutine());
     }
 
-    private System.Collections.IEnumerator RotateLidCoroutine()
+    private IEnumerator RotateLidCoroutine()
     {
-        Debug.Log("[SarcophagusEscape] RotateLidCoroutine started.");
         float duration = 1.0f;
         float elapsed = 0f;
         
-        // Deparent so world space coordinates work correctly
         sarcophagusLid.transform.SetParent(null);
 
-        // Ensure any Rigidbody doesn't fight the coroutine animation
         Rigidbody rb = sarcophagusLid.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.isKinematic = true;
-        }
+        if (rb != null) rb.isKinematic = true;
         
         Vector3 startPos = sarcophagusLid.transform.position;
         Quaternion startRot = sarcophagusLid.transform.rotation;
         
-        // Target: Slide forward and drop down relative to player orientation
-        Vector3 pushOffset = player1 != null ? (player1.transform.forward * 1.6f - player1.transform.up * 1.1f) : new Vector3(0f, -1.1f, 1.6f);
+        Vector3 pushOffset = targetPlayer != null ? (targetPlayer.transform.forward * 1.6f - targetPlayer.transform.up * 1.1f) : new Vector3(0f, -1.1f, 1.6f);
         Vector3 targetPos = startPos + pushOffset;
         
-        // Target rotation: Fall flat on its face (pitch rotation relative to player)
         Quaternion targetRot = startRot;
-        if (player1 != null)
+        if (targetPlayer != null)
         {
-            // Rotate 90 degrees around the player's right axis (pitch forward)
-            targetRot = Quaternion.AngleAxis(90f, player1.transform.right) * startRot;
+            targetRot = Quaternion.AngleAxis(90f, targetPlayer.transform.right) * startRot;
         }
         else
         {
             targetRot = Quaternion.Euler(90f, startRot.eulerAngles.y, startRot.eulerAngles.z);
         }
 
-        // Disable collider temporarily to prevent any clipping/jitter with sarcophagus base
         var col = sarcophagusLid.GetComponent<Collider>();
         if (col != null) col.enabled = false;
 
-        // Perform smooth lerp with satisfying bounce at the end
         while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
@@ -220,7 +464,6 @@ public class SarcophagusEscape : MonoBehaviourPun
         sarcophagusLid.transform.position = targetPos;
         sarcophagusLid.transform.rotation = targetRot;
 
-        // Re-enable collider so player can step on it on the ground
         if (col != null) col.enabled = true;
     }
 
@@ -229,21 +472,9 @@ public class SarcophagusEscape : MonoBehaviourPun
         float n1 = 7.5625f;
         float d1 = 2.75f;
 
-        if (x < 1f / d1)
-        {
-            return n1 * x * x;
-        }
-        else if (x < 2f / d1)
-        {
-            return n1 * (x -= 1.5f / d1) * x + 0.75f;
-        }
-        else if (x < 2.5f / d1)
-        {
-            return n1 * (x -= 2.25f / d1) * x + 0.9375f;
-        }
-        else
-        {
-            return n1 * (x -= 2.625f / d1) * x + 0.984375f;
-        }
+        if (x < 1f / d1) return n1 * x * x;
+        else if (x < 2f / d1) return n1 * (x -= 1.5f / d1) * x + 0.75f;
+        else if (x < 2.5f / d1) return n1 * (x -= 2.25f / d1) * x + 0.9375f;
+        else return n1 * (x -= 2.625f / d1) * x + 0.984375f;
     }
 }

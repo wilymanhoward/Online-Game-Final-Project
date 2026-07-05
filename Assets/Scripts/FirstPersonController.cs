@@ -21,7 +21,7 @@ public class FirstPersonController : MonoBehaviourPun
     [Header("Camera Settings")]
     [Tooltip("Target transform for the head. If null, the camera will be positioned relative to the player's transform.")]
     public Transform headJoint;
-    public Vector3 cameraOffset = new Vector3(0f, 0.15f, 0.15f); // Slightly forward to prevent clipping through the mummy's head/wrapping mesh
+    public Vector3 cameraOffset = new Vector3(0f, 0.12f, 0.25f); // Slightly lower and further forward to prevent clipping through the mummy's head/wrapping mesh
 
     private CharacterController controller;
     private Animator animator;
@@ -92,7 +92,7 @@ public class FirstPersonController : MonoBehaviourPun
     private bool isThrowingAnim = false;
     private float throwExitBlend = 0f;
     private float throwExitDuration = 0.2f;
-    private float originalNearClip = 0.3f;
+    public float originalNearClip = 0.25f;
  
     [Header("Camera Aim Settings")]
     public float cameraAimBlendSpeed = 8f;
@@ -119,6 +119,16 @@ public class FirstPersonController : MonoBehaviourPun
     private float torchHoldWeight = 0f;
     private GameObject leftHandTorchObj;
 
+    [Header("Torch Hold Pose Offset")]
+    public Vector3 torchHoldShoulderEuler = new Vector3(105f, 0f, -20f);
+    public float torchHoldElbowX = -45f;
+    public Vector3 torchHoldHandEuler = new Vector3(15f, 0f, 0f);
+
+    [Header("Torch Place Pose Offset")]
+    public Vector3 torchPlaceShoulderEuler = new Vector3(75f, 30f, -5f);
+    public float torchPlaceElbowX = -40f;
+    public Vector3 torchPlaceHandEuler = new Vector3(0f, 0f, 50f);
+
     // Torch placing animation state
     private bool isPlacingTorch = false;
     public bool IsPlacingTorch => isPlacingTorch;
@@ -132,6 +142,38 @@ public class FirstPersonController : MonoBehaviourPun
     public bool IsDead => isDead;
     private int clickCountToRespawn = 0;
     private bool isLocalPlayer = true;
+    public bool IsLocalPlayer
+    {
+        get
+        {
+            if (PhotonNetwork.IsConnected)
+            {
+                if (gameObject.name == "Player1")
+                {
+                    return PhotonNetwork.IsMasterClient;
+                }
+                else if (gameObject.name == "Player2")
+                {
+                    return !PhotonNetwork.IsMasterClient;
+                }
+                else
+                {
+                    return photonView.IsMine;
+                }
+            }
+            else
+            {
+                // Offline fallback: only local if this instance has an active camera
+                var cam = GetComponentInChildren<Camera>(true);
+                if (cam != null)
+                {
+                    return cam.enabled && cam.gameObject.activeInHierarchy;
+                }
+                return isLocalPlayer;
+            }
+        }
+    }
+    public static FirstPersonController InteractingPlayer { get; set; }
     public bool isParalyzed = false;
     private GameObject deathOverlayObj;
     private UnityEngine.UI.Text deathClicksText;
@@ -257,7 +299,7 @@ public class FirstPersonController : MonoBehaviourPun
         }
 
         // If this is a remote player, we don't control it
-        if (!isLocalPlayer)
+        if (!IsLocalPlayer)
         {
             // Disable CharacterController and FirstPersonController inputs
             if (controller != null) controller.enabled = false;
@@ -322,7 +364,7 @@ public class FirstPersonController : MonoBehaviourPun
             }
         }
 
-        if (!PhotonNetwork.IsConnected || isLocalPlayer)
+        if (!PhotonNetwork.IsConnected || IsLocalPlayer)
         {
             CreateDeathUI();
         }
@@ -350,7 +392,7 @@ public class FirstPersonController : MonoBehaviourPun
 
     void Update()
     {
-        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
+        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
 
         bool disableMovement = isParalyzed || (inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptLook || inputReader.AreInputsDisabledExceptInteract));
 
@@ -766,7 +808,8 @@ public class FirstPersonController : MonoBehaviourPun
             }
         }
 
-        // Smoothly blend the torch holding pose on the left arm joints
+        // Smoothly blend the torch holding pose on the left arm joints in LateUpdate instead of Update
+        // to prevent the Unity Animator from overwriting the custom joint rotations.
         if (isHoldingTorch)
         {
             torchHoldWeight = Mathf.MoveTowards(torchHoldWeight, 1f, Time.deltaTime * 5f);
@@ -784,18 +827,23 @@ public class FirstPersonController : MonoBehaviourPun
                 placeBlend = Mathf.Clamp01((0.6f - torchPlaceTimer) / 0.3f);
             }
 
-            float armX = Mathf.Lerp(65f, 75f, placeBlend);
-            float armY = Mathf.Lerp(50f, 30f, placeBlend);
-            float armZ = Mathf.Lerp(-10f, -5f, placeBlend);
+            float armX = Mathf.Lerp(torchHoldShoulderEuler.x, torchPlaceShoulderEuler.x, placeBlend);
+            float armY = Mathf.Lerp(torchHoldShoulderEuler.y, torchPlaceShoulderEuler.y, placeBlend);
+            float armZ = Mathf.Lerp(torchHoldShoulderEuler.z, torchPlaceShoulderEuler.z, placeBlend);
 
-            float elbowX = Mathf.Lerp(-120f, -40f, placeBlend);
-            float handZ = Mathf.Lerp(60f, 50f, placeBlend);
+            // Shift arm raise/lower to follow the camera's vertical look angle (pitch)
+            armX -= pitch;
+
+            float elbowX = Mathf.Lerp(torchHoldElbowX, torchPlaceElbowX, placeBlend);
+            float handX = Mathf.Lerp(torchHoldHandEuler.x, torchPlaceHandEuler.x, placeBlend);
+            float handY = Mathf.Lerp(torchHoldHandEuler.y, torchPlaceHandEuler.y, placeBlend);
+            float handZ = Mathf.Lerp(torchHoldHandEuler.z, torchPlaceHandEuler.z, placeBlend);
 
             if (leftArmJoint != null)
             {
                 // Bends left upper arm up-forward and slightly outward (more to the side)
                 // Also tilts up/down (using parent chest-space pitch) to follow camera movement
-                Quaternion targetArmRot = Quaternion.Euler(pitch, 0f, 0f) * defaultLeftArmRot * Quaternion.Euler(armX, armY, armZ);
+                Quaternion targetArmRot = defaultLeftArmRot * Quaternion.Euler(armX, armY, armZ);
                 leftArmJoint.localRotation = Quaternion.Slerp(leftArmJoint.localRotation, targetArmRot, torchHoldWeight);
             }
             if (leftElbowJoint != null)
@@ -806,8 +854,8 @@ public class FirstPersonController : MonoBehaviourPun
             }
             if (leftHandJoint != null)
             {
-                // Holds torch upright and slightly tilted
-                Quaternion targetHandRot = defaultLeftHandRot * Quaternion.Euler(0f, 0f, handZ);
+                // Holds torch upright and tilted forward/right (towards the center)
+                Quaternion targetHandRot = defaultLeftHandRot * Quaternion.Euler(handX, handY, handZ);
                 leftHandJoint.localRotation = Quaternion.Slerp(leftHandJoint.localRotation, targetHandRot, torchHoldWeight);
             }
 
@@ -1049,7 +1097,7 @@ public class FirstPersonController : MonoBehaviourPun
         }
 
         // Aiming Logic (Hold Right-Click) - only active if not currently throwing
-        if (Input.GetMouseButton(1) && !isThrowingAnim && (!PhotonNetwork.IsConnected || isLocalPlayer))
+        if (Input.GetMouseButton(1) && !isThrowingAnim && (!PhotonNetwork.IsConnected || IsLocalPlayer))
         {
             isAiming = true;
             if (trajectoryLine != null) trajectoryLine.enabled = true;
@@ -1229,7 +1277,7 @@ public class FirstPersonController : MonoBehaviourPun
     private void OnTriggerEnter(Collider other)
     {
         // Only execute checkpoint saving and death zones for the local player
-        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
+        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
 
         if (CompareSafeTag(other, "Checkpoint"))
         {
@@ -1257,7 +1305,7 @@ public class FirstPersonController : MonoBehaviourPun
     private void OnControllerColliderHit(ControllerColliderHit hit)
     {
         // Handle solid physical checkpoints and death zones
-        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
+        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
 
         if (CompareSafeTag(hit.collider, "Checkpoint"))
         {
@@ -1285,7 +1333,7 @@ public class FirstPersonController : MonoBehaviourPun
     public void ResetAirTime()
     {
         // Only run for the local player client
-        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
+        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
 
         airTimeCounter = 0f;
         Debug.Log($"[FallDamage] Air time manually reset for {name}.");
@@ -1294,7 +1342,7 @@ public class FirstPersonController : MonoBehaviourPun
     public void Respawn()
     {
         // Only respawn the local player client
-        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
+        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
 
         if (!isDead)
         {
@@ -1531,7 +1579,7 @@ public class FirstPersonController : MonoBehaviourPun
     public void TriggerCameraShake(float duration, float magnitude)
     {
         // Only shake local player camera
-        if (PhotonNetwork.IsConnected && !isLocalPlayer) return;
+        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
 
         StartCoroutine(DoCameraShake(duration, magnitude));
     }

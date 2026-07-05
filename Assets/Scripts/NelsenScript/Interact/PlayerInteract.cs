@@ -18,8 +18,14 @@ public class PlayerInteract : MonoBehaviour
 
     private void Start()
     {
-        mainCamera = Camera.main;
         playerController = GetComponent<FirstPersonController>();
+        if (playerController != null && !playerController.IsLocalPlayer)
+        {
+            enabled = false;
+            return;
+        }
+
+        mainCamera = Camera.main;
         if (inputReader != null)
         {
             inputReader.SetInputsDisabled(false);
@@ -66,6 +72,18 @@ public class PlayerInteract : MonoBehaviour
 
     public void TryInteract()
     {
+        // Guard to ensure only the local player's script processes interaction inputs
+        if (playerController == null)
+        {
+            playerController = GetComponent<FirstPersonController>();
+        }
+        if (playerController != null && !playerController.IsLocalPlayer)
+        {
+            return;
+        }
+
+        FirstPersonController.InteractingPlayer = playerController;
+
         if (WaitingForTeam)
         {
             if (currentInteractable != null)
@@ -76,15 +94,71 @@ public class PlayerInteract : MonoBehaviour
             return;
         }
 
-        // Proximity-based interaction for Torches: stand close and press E without aiming
+        // 1. Raycast-based interaction (aiming directly at an object takes highest priority)
+        if (mainCamera == null)
+        {
+            mainCamera = Camera.main;
+        }
+
+        if (mainCamera != null)
+        {
+            ray = new Ray(mainCamera.transform.position, mainCamera.transform.forward);
+            if (Physics.Raycast(ray, out hit, interactRange))
+            {
+                IInteractable interactable = hit.collider.GetComponentInParent<IInteractable>();
+                if (interactable != null)
+                {
+                    // If it is an InteractLever and someone is already waiting on it, block interaction
+                    if (interactable is InteractLever lever && lever.WaitingForTeam && !WaitingForTeam)
+                    {
+                        Debug.Log("Lever is already occupied by another player.");
+                        return;
+                    }
+
+                    currentInteractable = interactable;
+
+                    bool shouldWait = false;
+                    if (interactable is InteractLever activeLever && activeLever.MultiplePeopleRequired && !activeLever.LeverActivated)
+                    {
+                        // If the second lever exists and is already waiting, this interaction will trigger both to activate,
+                        // so we do not need to wait. Otherwise, we must wait.
+                        if (activeLever.GetSecondLever == null || !activeLever.GetSecondLever.WaitingForTeam)
+                        {
+                            shouldWait = true;
+                        }
+                    }
+
+                    currentInteractable.Interact();
+                    
+                    if (shouldWait)
+                    {
+                        WaitForTeam();
+                    }
+                    return;
+                }
+            }
+        }
+
+        // 2. Proximity-based interaction fallback for Torches (stand close and press E without aiming)
         TorchInteractable closestTorch = null;
-        float minDistance = interactRange;
+        float proximityRange = 4.5f; // Generous range for comfortable proximity check
+        float minDistance = proximityRange;
         var torches = FindObjectsOfType<TorchInteractable>();
         foreach (var torch in torches)
         {
             if (torch != null)
             {
-                float dist = Vector3.Distance(transform.position, torch.transform.position);
+                // Only consider this torch if it can actually be interacted with:
+                // - Either it is on the wall (not picked up), OR
+                // - It is picked up and player is holding a torch (to put it back)
+                bool canInteract = !torch.IsPickedUp || (playerController != null && playerController.IsHoldingTorch);
+                if (!canInteract) continue;
+
+                // Calculate distance on the XZ plane to ignore the vertical offset of wall-mounted torches
+                Vector3 playerPosXZ = new Vector3(transform.position.x, 0f, transform.position.z);
+                Vector3 torchPosXZ = new Vector3(torch.transform.position.x, 0f, torch.transform.position.z);
+                float dist = Vector3.Distance(playerPosXZ, torchPosXZ);
+                
                 if (dist < minDistance)
                 {
                     minDistance = dist;
@@ -97,47 +171,6 @@ public class PlayerInteract : MonoBehaviour
         {
             closestTorch.Interact();
             return;
-        }
-
-        if (mainCamera == null)
-        {
-            mainCamera = Camera.main;
-            if (mainCamera == null) return;
-        }
-
-        ray = new Ray(mainCamera.transform.position, mainCamera.transform.forward);
-        if (Physics.Raycast(ray, out hit, interactRange))
-        {
-            IInteractable interactable = hit.collider.GetComponentInParent<IInteractable>();
-            if (interactable != null)
-            {
-                // If it is an InteractLever and someone is already waiting on it, block interaction
-                if (interactable is InteractLever lever && lever.WaitingForTeam && !WaitingForTeam)
-                {
-                    Debug.Log("Lever is already occupied by another player.");
-                    return;
-                }
-
-                currentInteractable = interactable;
-
-                bool shouldWait = false;
-                if (interactable is InteractLever activeLever && activeLever.MultiplePeopleRequired && !activeLever.LeverActivated)
-                {
-                    // If the second lever exists and is already waiting, this interaction will trigger both to activate,
-                    // so we do not need to wait. Otherwise, we must wait.
-                    if (activeLever.GetSecondLever == null || !activeLever.GetSecondLever.WaitingForTeam)
-                    {
-                        shouldWait = true;
-                    }
-                }
-
-                currentInteractable.Interact();
-                
-                if (shouldWait)
-                {
-                    WaitForTeam();
-                }
-            }
         }
     }
 
