@@ -6,6 +6,15 @@ public class PlayerSetupManager : MonoBehaviourPunCallbacks
 {
     private void Start()
     {
+        // Ensure both Player1 and Player2 GameObjects are set active so they initialize properly
+        foreach (var rootObj in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+        {
+            if (rootObj != null && (rootObj.name == "Player1" || rootObj.name == "Player2"))
+            {
+                rootObj.SetActive(true);
+            }
+        }
+
         // Optimize Photon update rates for smooth multiplayer movement sync
         PhotonNetwork.SendRate = 30;
         PhotonNetwork.SerializationRate = 30;

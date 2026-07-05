@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1 &8802490023895952760
+--- !u!1 &321675212136903962
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -8,8 +8,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 6527319940046544287}
-  - component: {fileID: 5047216069593150162}
+  - component: {fileID: 1836231083884372144}
+  - component: {fileID: 1927115924443137233}
   m_Layer: 0
   m_Name: TorchLight
   m_TagString: Untagged
@@ -17,28 +17,28 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &6527319940046544287
+--- !u!4 &1836231083884372144
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8802490023895952760}
+  m_GameObject: {fileID: 321675212136903962}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0.45, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 2360638628870692780}
+  m_Father: {fileID: 4498470303687153115}
   m_RootOrder: -1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!108 &5047216069593150162
+--- !u!108 &1927115924443137233
 Light:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8802490023895952760}
+  m_GameObject: {fileID: 321675212136903962}
   m_Enabled: 1
   serializedVersion: 10
   m_Type: 2
@@ -94,13 +94,13 @@ Light:
   m_UseViewFrustumForShadowCasterCull: 1
   m_ShadowRadius: 0
   m_ShadowAngle: 0
---- !u!1001 &3044056285915883173
+--- !u!1001 &2954384141515130408
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Modification:
     serializedVersion: 2
-    m_TransformParent: {fileID: 2360638628870692780}
+    m_TransformParent: {fileID: 4498470303687153115}
     m_Modifications:
     - target: {fileID: 3893547701562373507, guid: a36c7faaa7442aa41b3bde30a5ad8f33,
         type: 3}
@@ -190,13 +190,13 @@ PrefabInstance:
     m_RemovedComponents: []
     m_AddedGameObjects: []
   m_SourcePrefab: {fileID: 100100000, guid: a36c7faaa7442aa41b3bde30a5ad8f33, type: 3}
---- !u!4 &5073194008640105645 stripped
+--- !u!4 &4997067848072498208 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7807326414133103112, guid: a36c7faaa7442aa41b3bde30a5ad8f33,
     type: 3}
-  m_PrefabInstance: {fileID: 3044056285915883173}
+  m_PrefabInstance: {fileID: 2954384141515130408}
   m_PrefabAsset: {fileID: 0}
---- !u!1001 &3630679972532916996
+--- !u!1001 &3228428414566177139
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -274,17 +274,17 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1342187456976653480, guid: 2811b95a90587dc409a2e955ef7fd619,
         type: 3}
       insertIndex: -1
-      addedObject: {fileID: 5073194008640105645}
+      addedObject: {fileID: 4997067848072498208}
     - targetCorrespondingSourceObject: {fileID: 1342187456976653480, guid: 2811b95a90587dc409a2e955ef7fd619,
         type: 3}
       insertIndex: -1
-      addedObject: {fileID: 6527319940046544287}
+      addedObject: {fileID: 1836231083884372144}
   m_SourcePrefab: {fileID: 100100000, guid: 2811b95a90587dc409a2e955ef7fd619, type: 3}
---- !u!4 &2360638628870692780 stripped
+--- !u!4 &4498470303687153115 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1342187456976653480, guid: 2811b95a90587dc409a2e955ef7fd619,
     type: 3}
-  m_PrefabInstance: {fileID: 3630679972532916996}
+  m_PrefabInstance: {fileID: 3228428414566177139}
   m_PrefabAsset: {fileID: 0}
 --- !u!1001 &5566531351869051542
 PrefabInstance:
@@ -369,7 +369,7 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 2423094504683107462, guid: 409fe45ed9f74884a8d917aecd144a87,
         type: 3}
       insertIndex: -1
-      addedObject: {fileID: 2360638628870692780}
+      addedObject: {fileID: 4498470303687153115}
   m_SourcePrefab: {fileID: 100100000, guid: 409fe45ed9f74884a8d917aecd144a87, type: 3}
 --- !u!4 &1154837357967082975 stripped
 Transform:
@@ -528,7 +528,16 @@ MonoBehaviour:
   throwAnimDuration: 0.3
   cameraAimBlendSpeed: 8
   deathYThreshold: -15
+  fatalAirTimeThreshold: 3
+  inputReader: {fileID: 0}
+  torchHoldShoulderEuler: {x: 55, y: 15, z: -85}
+  torchHoldElbowX: -60
+  torchHoldHandEuler: {x: 30, y: -20, z: -60}
+  torchPlaceShoulderEuler: {x: 75, y: 30, z: -5}
+  torchPlaceElbowX: -40
+  torchPlaceHandEuler: {x: 0, y: 0, z: 50}
   requiredClicksForRespawn: 5
+  isParalyzed: 0
 --- !u!114 &1744738265623392513
 MonoBehaviour:
   m_ObjectHideFlags: 0

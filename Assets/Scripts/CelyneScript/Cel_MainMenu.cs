@@ -68,6 +68,7 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
     private Vector3 playerStone2Scale;
 
     private string pendingRoomToJoin = "";
+    private bool isStartingGame = false;
 
     private void Start()
     {
@@ -408,7 +409,33 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
                 inputRoomCodeStone.SetActive(false);
             }
             
-            StartCoroutine(PlayCutsceneAndTransition());
+            // Set custom room property to signal game start
+            ExitGames.Client.Photon.Hashtable props = new ExitGames.Client.Photon.Hashtable();
+            props["StartGame"] = true;
+            PhotonNetwork.CurrentRoom.SetCustomProperties(props);
+        }
+    }
+
+    public override void OnRoomPropertiesUpdate(ExitGames.Client.Photon.Hashtable propertiesThatChanged)
+    {
+        if (propertiesThatChanged.ContainsKey("StartGame"))
+        {
+            object val = propertiesThatChanged["StartGame"];
+            if (val != null && (bool)val)
+            {
+                if (!isStartingGame)
+                {
+                    isStartingGame = true;
+                    
+                    // Hide Input Room Code Stone when starting
+                    if (inputRoomCodeStone != null)
+                    {
+                        inputRoomCodeStone.SetActive(false);
+                    }
+                    
+                    StartCoroutine(PlayCutsceneAndTransition());
+                }
+            }
         }
     }
 
@@ -450,8 +477,19 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         if (menuCamera != null) menuCamera.SetActive(false);
         if (cutsceneCamera != null) cutsceneCamera.SetActive(true);
 
-        // Hide main UI Canvas
-        if (mainCanvas != null) mainCanvas.SetActive(false);
+        // Hide main UI Canvas by disabling the Canvas component (keeps coroutines running)
+        if (mainCanvas != null)
+        {
+            Canvas canvasComp = mainCanvas.GetComponent<Canvas>();
+            if (canvasComp != null)
+            {
+                canvasComp.enabled = false;
+            }
+            else
+            {
+                mainCanvas.SetActive(false);
+            }
+        }
 
         // Stop BGM
         if (bgmSource != null) bgmSource.Stop();
@@ -484,24 +522,13 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         if (startTimeline != null)
         {
             Debug.Log("[Transition] Waiting for timeline to finish...");
-            float maxWaitTime = (float)(startTimeline.duration > 0 ? startTimeline.duration + 5f : 15f); 
-            float waitTimer = 0f;
-
-            // Wait until it stops playing, but add a fallback timeout in case it's looping forever
-            while (startTimeline.state == PlayState.Playing && waitTimer < maxWaitTime)
+            // Subtract the fade-in duration since the timeline was already playing during it
+            float remainingTime = (float)startTimeline.duration - fadeDuration;
+            if (remainingTime > 0f)
             {
-                waitTimer += Time.deltaTime;
-                yield return null;
+                yield return new WaitForSeconds(remainingTime);
             }
-            
-            if (waitTimer >= maxWaitTime)
-            {
-                Debug.LogWarning("[Transition] Timeline wait timed out! Is the timeline set to Loop?");
-            }
-            else
-            {
-                Debug.Log("[Transition] Timeline finished naturally.");
-            }
+            Debug.Log("[Transition] Timeline finished naturally.");
         }
 
         // 5. Instantly load the next scene without any extra delay

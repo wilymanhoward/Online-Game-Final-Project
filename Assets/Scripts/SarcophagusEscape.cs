@@ -115,10 +115,26 @@ public class SarcophagusEscape : MonoBehaviourPun
                 if (fpc != null)
                 {
                     fpc.isParalyzed = true;
-                    // You might want to customize the trap position based on P1/P2 in the future
-                    targetPlayer.transform.position = new Vector3(-1.24f, 0.4f, -2.10f);
+                    fpc.originalNearClip = 0.26f; // Set default post-escape near clip
+                    // Position player inside their respective sarcophagus base
+                    if (isForPlayer1)
+                    {
+                        targetPlayer.transform.position = new Vector3(-1.24f, 0.4f, -2.10f);
+                    }
+                    else
+                    {
+                        targetPlayer.transform.position = new Vector3(-11.531f, 0.09128681f, 15.23f);
+                    }
                 }
             }
+
+            // Set camera clipping plane near to 0.15 while inside the Sarcophagus
+            Camera mainCam = Camera.main;
+            if (mainCam != null)
+            {
+                mainCam.nearClipPlane = 0.15f;
+            }
+
             CreateSpamUI();
         }
 
@@ -376,6 +392,13 @@ public class SarcophagusEscape : MonoBehaviourPun
         if (fpc != null)
         {
             fpc.isParalyzed = false;
+        }
+
+        // Restore camera clipping plane near to 0.25 after opening the lid
+        Camera mainCam = Camera.main;
+        if (mainCam != null)
+        {
+            mainCam.nearClipPlane = 0.25f;
         }
 
         if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
