@@ -9,6 +9,7 @@ public class PlayerInteract : MonoBehaviourPun, IPunOwnershipCallbacks
 {
     [SerializeField] private InputReader inputReader;
     [SerializeField] private float interactRange = 3f;
+    [SerializeField] private GameObject interactUI;
 
     private IInteractable currentInteractable;
 
@@ -44,6 +45,38 @@ public class PlayerInteract : MonoBehaviourPun, IPunOwnershipCallbacks
             // RequestOwnership() call is async). OnOwnershipTransferred will activate us
             // once Photon confirms the transfer.
             enabled = false;
+        }
+    }
+
+    private void Update()
+    {
+        // Only run for local player
+        if (!photonView.IsMine) return;
+
+        bool showPrompt = false;
+
+        if (mainCamera == null)
+        {
+            mainCamera = Camera.main;
+        }
+
+        if (mainCamera != null)
+        {
+            ray = new Ray(mainCamera.transform.position, mainCamera.transform.forward);
+            if (Physics.Raycast(ray, out hit, interactRange))
+            {
+                InteractLever lever = hit.collider.GetComponentInParent<InteractLever>();
+                if (lever != null && !lever.LeverActivated)
+                {
+                    // Only show if the lever is not already activated
+                    showPrompt = true;
+                }
+            }
+        }
+
+        if (interactUI != null)
+        {
+            interactUI.SetActive(showPrompt);
         }
     }
 
