@@ -29,10 +29,12 @@ public class FallingFloors : MonoBehaviour, IGames
 
     [Header("Game Loop Settings")]
     [SerializeField] private float timeBetweenRounds = 5f;
-    [SerializeField] private int totalRounds = 10;
+    [SerializeField] private int totalRounds = 7;
 
     [Header("Events")]
+    [SerializeField] private UnityEvent OnGameStartEvent;
     [SerializeField] private UnityEvent OnGameWonEvent;
+    [SerializeField] private UnityEvent OnGameLostEvent;
 
     private enum GameState { BetweenRound, RoundStart, GameEnd }
     private GameState currentState;
@@ -175,8 +177,9 @@ public class FallingFloors : MonoBehaviour, IGames
         currentState = GameState.BetweenRound;
         currentStateTime = timeBetweenRounds;
         currentTime = 0f;
-        
+
         Debug.Log("FallingFloors: StartGame called.");
+        OnGameStartEvent?.Invoke();
     }
 
     public void RestartGame()
@@ -238,7 +241,25 @@ public class FallingFloors : MonoBehaviour, IGames
 
     private void GameLost()
     {
-        RestartGame();
+        Debug.Log("[FallingFloors] Game lost — resetting and waiting for trigger.");
+
+        // Stop all coroutines and audio
+        if (audioCoroutine != null) { StopCoroutine(audioCoroutine); audioCoroutine = null; }
+        if (clockCoroutine != null) { StopCoroutine(clockCoroutine); clockCoroutine = null; }
+        if (audioSource != null)    { audioSource.Stop(); }
+
+        // Reset platforms back to their original positions
+        ResetPlatform();
+
+        // Reset round counters, but keep roundStart = false so nothing runs
+        // until the trigger zone calls StartGame() again.
+        currentRound     = 0;
+        currentTime      = 0f;
+        roundStart       = false;
+        currentState     = GameState.BetweenRound;
+        currentStateTime = 0f;
+
+        OnGameLostEvent?.Invoke();
     }
 
     private void GameWon()

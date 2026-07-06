@@ -1,8 +1,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Photon.Pun;
 
-public class PlayerInteract : MonoBehaviour
+[RequireComponent(typeof(PhotonView))]
+public class PlayerInteract : MonoBehaviourPun
 {
     [SerializeField] private InputReader inputReader;
     [SerializeField] private float interactRange = 3f;
@@ -18,14 +20,16 @@ public class PlayerInteract : MonoBehaviour
 
     private void Start()
     {
-        playerController = GetComponent<FirstPersonController>();
-        if (playerController != null && !playerController.IsLocalPlayer)
+        // Only the local player's PlayerInteract should be active
+        if (!photonView.IsMine)
         {
             enabled = false;
             return;
         }
 
+        playerController = GetComponent<FirstPersonController>();
         mainCamera = Camera.main;
+
         if (inputReader != null)
         {
             inputReader.SetInputsDisabled(false);
@@ -36,6 +40,9 @@ public class PlayerInteract : MonoBehaviour
 
     private void OnEnable()
     {
+        // Skip input registration for remote players
+        if (!photonView.IsMine) return;
+
 #if UNITY_EDITOR
         if (inputReader == null)
         {
@@ -72,14 +79,12 @@ public class PlayerInteract : MonoBehaviour
 
     public void TryInteract()
     {
-        // Guard to ensure only the local player's script processes interaction inputs
+        // Only the local player can trigger interactions
+        if (!photonView.IsMine) return;
+
         if (playerController == null)
         {
             playerController = GetComponent<FirstPersonController>();
-        }
-        if (playerController != null && !playerController.IsLocalPlayer)
-        {
-            return;
         }
 
         FirstPersonController.InteractingPlayer = playerController;
@@ -156,7 +161,7 @@ public class PlayerInteract : MonoBehaviour
 
                 // Calculate distance on the XZ plane to ignore the vertical offset of wall-mounted torches
                 Vector3 playerPosXZ = new Vector3(transform.position.x, 0f, transform.position.z);
-                Vector3 torchPosXZ = new Vector3(torch.transform.position.x, 0f, torch.transform.position.z);
+                Vector3 torchPosXZ  = new Vector3(torch.transform.position.x, 0f, torch.transform.position.z);
                 float dist = Vector3.Distance(playerPosXZ, torchPosXZ);
                 
                 if (dist < minDistance)
@@ -174,10 +179,12 @@ public class PlayerInteract : MonoBehaviour
         }
     }
 
-    private void WaitForTeam(){
+    private void WaitForTeam()
+    {
         WaitingForTeam = true;
         Debug.Log("WaitingForTeam");
-        //Disable movement and look
+
+        // Disable movement and look
         if (inputReader != null)
         {
             inputReader.SetInputsDisabledExceptInteract(true);
@@ -190,7 +197,8 @@ public class PlayerInteract : MonoBehaviour
         }
     }
 
-    private void ExitWaitForTeam(){
+    private void ExitWaitForTeam()
+    {
         WaitingForTeam = false;
         
         if (inputReader != null)
@@ -206,10 +214,8 @@ public class PlayerInteract : MonoBehaviour
 
         currentInteractable = null;
         Debug.Log("ExitWaitForTeam");
-        //Enable movement and look
+        // Enable movement and look
     }
-
-
 
     private void OnDrawGizmos()
     {
