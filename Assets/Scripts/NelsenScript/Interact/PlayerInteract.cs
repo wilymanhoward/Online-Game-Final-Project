@@ -2,9 +2,10 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
+using Photon.Realtime;
 
 [RequireComponent(typeof(PhotonView))]
-public class PlayerInteract : MonoBehaviourPun
+public class PlayerInteract : MonoBehaviourPun, IPunOwnershipCallbacks
 {
     [SerializeField] private InputReader inputReader;
     [SerializeField] private float interactRange = 3f;
@@ -18,17 +19,41 @@ public class PlayerInteract : MonoBehaviourPun
     private bool WaitingForTeam = false;
     private Camera mainCamera;
 
+    private void Awake()
+    {
+        // Register for ownership callbacks manually so they keep firing even when
+        // this component is disabled (which it will be for non-owners waiting on transfer).
+        // We intentionally use Awake/OnDestroy instead of OnEnable/OnDisable so the
+        // registration outlives the component's enabled state.
+        PhotonNetwork.AddCallbackTarget(this);
+    }
+
     private void Start()
     {
-        // Only the local player's PlayerInteract should be active
-        if (!photonView.IsMine)
-        {
-            enabled = false;
-            return;
-        }
-
         playerController = GetComponent<FirstPersonController>();
         mainCamera = Camera.main;
+
+        if (photonView.IsMine)
+        {
+            // We already own this player — activate immediately.
+            ActivateForLocalPlayer();
+        }
+        else
+        {
+            // Ownership has not been transferred yet (common for the guest player whose
+            // RequestOwnership() call is async). OnOwnershipTransferred will activate us
+            // once Photon confirms the transfer.
+            enabled = false;
+        }
+    }
+
+    private void ActivateForLocalPlayer()
+    {
+        if (playerController == null)
+            playerController = GetComponent<FirstPersonController>();
+
+        if (mainCamera == null)
+            mainCamera = Camera.main;
 
         if (inputReader != null)
         {
@@ -38,12 +63,46 @@ public class PlayerInteract : MonoBehaviourPun
         }
     }
 
+    // ---- IPunOwnershipCallbacks ------------------------------------------------
+    // Registered in Awake() / removed in OnDestroy() so these fire even when
+    // this component is disabled — which is intentional for the guest player.
+
+    public void OnOwnershipRequest(PhotonView targetView, Player requestingPlayer) { }
+
+    // NOTE: PUN2 has a typo in their interface — it is "Transfered" with one 'r'
+    public void OnOwnershipTransfered(PhotonView targetView, Player previousOwner)
+    {
+        // Only handle ownership changes for THIS player object
+        if (targetView != photonView) return;
+
+        if (photonView.IsMine)
+        {
+            enabled = true; // triggers OnEnable → subscribes TryInteract
+            ActivateForLocalPlayer();
+        }
+        else
+        {
+            enabled = false; // triggers OnDisable → unsubscribes TryInteract
+        }
+    }
+
+    public void OnOwnershipTransferFailed(PhotonView targetView, Player senderOfFailedRequest) { }
+
+    private void OnDestroy()
+    {
+        PhotonNetwork.RemoveCallbackTarget(this);
+    }
+
     private void OnEnable()
     {
-        // Skip input registration for remote players
-        if (!photonView.IsMine) return;
+        // 1. If not assigned in Inspector, try loading from a Resources folder (works in builds)
+        if (inputReader == null)
+        {
+            inputReader = Resources.Load<InputReader>("InputReader");
+        }
 
 #if UNITY_EDITOR
+        // 2. Editor-only fallback: search entire AssetDatabase
         if (inputReader == null)
         {
             string[] guids = UnityEditor.AssetDatabase.FindAssets("t:InputReader");
@@ -54,19 +113,14 @@ public class PlayerInteract : MonoBehaviourPun
             }
         }
 #endif
+
         if (inputReader == null)
         {
-            InputReader[] readers = Resources.FindObjectsOfTypeAll<InputReader>();
-            if (readers != null && readers.Length > 0)
-            {
-                inputReader = readers[0];
-            }
+            Debug.LogError("[PlayerInteract] InputReader is null! Assign it in the Inspector on the Player prefab, or place the InputReader asset inside a 'Resources/' folder named 'InputReader'.", this);
+            return;
         }
 
-        if (inputReader != null)
-        {
-            inputReader.OnInteract += TryInteract;
-        }
+        inputReader.OnInteract += TryInteract;
     }
 
     private void OnDisable()
@@ -184,7 +238,6 @@ public class PlayerInteract : MonoBehaviourPun
         WaitingForTeam = true;
         Debug.Log("WaitingForTeam");
 
-        // Disable movement and look
         if (inputReader != null)
         {
             inputReader.SetInputsDisabledExceptInteract(true);
@@ -214,7 +267,87 @@ public class PlayerInteract : MonoBehaviourPun
 
         currentInteractable = null;
         Debug.Log("ExitWaitForTeam");
-        // Enable movement and look
+    }
+
+    // ---- Network Router for Static Scene Objects without PhotonView ----
+    
+    public void RouteLeverInteract(InteractLever lever)
+    {
+        if (photonView.IsMine && PhotonNetwork.IsConnected)
+        {
+            photonView.RPC("SyncLeverInteractRPC", RpcTarget.All, GetGameObjectPath(lever.gameObject));
+        }
+    }
+
+    public void RouteTriggerEnter(InteractWhenCrossed trigger, string playerObjectName)
+    {
+        if (photonView.IsMine && PhotonNetwork.IsConnected)
+        {
+            photonView.RPC("SyncTriggerEnterRPC", RpcTarget.All, GetGameObjectPath(trigger.gameObject), playerObjectName);
+        }
+    }
+
+    public void RouteTriggerExit(InteractWhenCrossed trigger, string playerObjectName)
+    {
+        if (photonView.IsMine && PhotonNetwork.IsConnected)
+        {
+            photonView.RPC("SyncTriggerExitRPC", RpcTarget.All, GetGameObjectPath(trigger.gameObject), playerObjectName);
+        }
+    }
+
+    [PunRPC]
+    private void SyncLeverInteractRPC(string path)
+    {
+        GameObject go = GameObject.Find(path);
+        if (go != null)
+        {
+            InteractLever lever = go.GetComponent<InteractLever>();
+            if (lever != null)
+            {
+                lever.InteractLocal();
+            }
+        }
+    }
+
+    [PunRPC]
+    private void SyncTriggerEnterRPC(string path, string playerObjectName)
+    {
+        GameObject triggerGO = GameObject.Find(path);
+        GameObject playerGO = GameObject.Find(playerObjectName);
+        if (triggerGO != null && playerGO != null)
+        {
+            InteractWhenCrossed trigger = triggerGO.GetComponent<InteractWhenCrossed>();
+            if (trigger != null)
+            {
+                trigger.OnTriggerEnterLocal(playerGO);
+            }
+        }
+    }
+
+    [PunRPC]
+    private void SyncTriggerExitRPC(string path, string playerObjectName)
+    {
+        GameObject triggerGO = GameObject.Find(path);
+        GameObject playerGO = GameObject.Find(playerObjectName);
+        if (triggerGO != null && playerGO != null)
+        {
+            InteractWhenCrossed trigger = triggerGO.GetComponent<InteractWhenCrossed>();
+            if (trigger != null)
+            {
+                trigger.OnTriggerExitLocal(playerGO);
+            }
+        }
+    }
+
+    private string GetGameObjectPath(GameObject obj)
+    {
+        string path = obj.name;
+        while (obj.transform.parent != null)
+        {
+            obj = obj.transform.parent.gameObject;
+            path = obj.name + "/" + path;
+        }
+        return path;
     }
 
     private void OnDrawGizmos()

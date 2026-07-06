@@ -42,10 +42,37 @@ public class InteractLever : MonoBehaviour, IInteractable
         if (PhotonNetwork.IsConnected)
         {
             PhotonView pv = GetComponent<PhotonView>();
-            if (pv != null)
+            if (pv != null && pv.ViewID > 0)
             {
                 pv.RPC("InteractRPC", RpcTarget.All);
                 return;
+            }
+            else
+            {
+                // Route through local player's PlayerInteract router if no scene PhotonView
+                FirstPersonController localPlayer = FirstPersonController.InteractingPlayer;
+                if (localPlayer == null)
+                {
+                    var players = FindObjectsOfType<FirstPersonController>();
+                    foreach (var p in players)
+                    {
+                        if (p.IsLocalPlayer)
+                        {
+                            localPlayer = p;
+                            break;
+                        }
+                    }
+                }
+
+                if (localPlayer != null)
+                {
+                    PlayerInteract pi = localPlayer.GetComponent<PlayerInteract>();
+                    if (pi != null)
+                    {
+                        pi.RouteLeverInteract(this);
+                        return;
+                    }
+                }
             }
         }
         InteractLocal();
@@ -57,7 +84,7 @@ public class InteractLever : MonoBehaviour, IInteractable
         InteractLocal();
     }
 
-    private void InteractLocal()
+    public void InteractLocal()
     {     
         if (!MultiplePeopleRequired)
         {

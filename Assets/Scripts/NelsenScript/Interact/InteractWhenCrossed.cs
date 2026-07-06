@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
+using Photon.Pun;
 
 [RequireComponent(typeof(Collider))]
 public class InteractWhenCrossed : MonoBehaviour
@@ -84,71 +85,99 @@ public class InteractWhenCrossed : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         FirstPersonController fpc = other.GetComponentInParent<FirstPersonController>();
-        if (fpc != null)
+        if (fpc != null && fpc.IsLocalPlayer)
         {
-            Transform playerTransform = fpc.transform;
-            
-            // Clean list first to ensure accurate count
-            CleanPlayersInsideList();
-
-            if (!physicalPlayersInside.Contains(playerTransform))
+            if (PhotonNetwork.IsConnected)
             {
-                physicalPlayersInside.Add(playerTransform);
-            }
-
-            if (!playersInside.Contains(playerTransform))
-            {
-                playersInside.Add(playerTransform);
-                // Debug.Log($"[InteractWhenCrossed] Player {playerTransform.name} entered trigger {gameObject.name}. Total players inside: {playersInside.Count}");
-            }
-
-            if (multiplePeopleRequired && secondTrigger != null)
-            {
-                if (!secondTrigger.playersInside.Contains(playerTransform))
+                PlayerInteract pi = fpc.GetComponent<PlayerInteract>();
+                if (pi != null)
                 {
-                    secondTrigger.playersInside.Add(playerTransform);
+                    pi.RouteTriggerEnter(this, fpc.gameObject.name);
+                    return;
                 }
             }
+            OnTriggerEnterLocal(fpc.gameObject);
+        }
+    }
 
-            CheckActivation(playerTransform.gameObject);
-            if (multiplePeopleRequired && secondTrigger != null)
+    public void OnTriggerEnterLocal(GameObject playerGO)
+    {
+        Transform playerTransform = playerGO.transform;
+        
+        // Clean list first to ensure accurate count
+        CleanPlayersInsideList();
+
+        if (!physicalPlayersInside.Contains(playerTransform))
+        {
+            physicalPlayersInside.Add(playerTransform);
+        }
+
+        if (!playersInside.Contains(playerTransform))
+        {
+            playersInside.Add(playerTransform);
+            // Debug.Log($"[InteractWhenCrossed] Player {playerTransform.name} entered trigger {gameObject.name}. Total players inside: {playersInside.Count}");
+        }
+
+        if (multiplePeopleRequired && secondTrigger != null)
+        {
+            if (!secondTrigger.playersInside.Contains(playerTransform))
             {
-                secondTrigger.CheckActivation(playerTransform.gameObject);
+                secondTrigger.playersInside.Add(playerTransform);
             }
+        }
+
+        CheckActivation(playerTransform.gameObject);
+        if (multiplePeopleRequired && secondTrigger != null)
+        {
+            secondTrigger.CheckActivation(playerTransform.gameObject);
         }
     }
 
     private void OnTriggerExit(Collider other)
     {
         FirstPersonController fpc = other.GetComponentInParent<FirstPersonController>();
-        if (fpc != null)
+        if (fpc != null && fpc.IsLocalPlayer)
         {
-            Transform playerTransform = fpc.transform;
-
-            if (physicalPlayersInside.Contains(playerTransform))
+            if (PhotonNetwork.IsConnected)
             {
-                physicalPlayersInside.Remove(playerTransform);
-            }
-
-            if (playersInside.Contains(playerTransform))
-            {
-                playersInside.Remove(playerTransform);
-                // Debug.Log($"[InteractWhenCrossed] Player {playerTransform.name} exited trigger {gameObject.name}. Total players inside: {playersInside.Count}");
-            }
-
-            if (multiplePeopleRequired && secondTrigger != null)
-            {
-                if (secondTrigger.playersInside.Contains(playerTransform))
+                PlayerInteract pi = fpc.GetComponent<PlayerInteract>();
+                if (pi != null)
                 {
-                    secondTrigger.playersInside.Remove(playerTransform);
+                    pi.RouteTriggerExit(this, fpc.gameObject.name);
+                    return;
                 }
             }
+            OnTriggerExitLocal(fpc.gameObject);
+        }
+    }
 
-            CheckDeactivation(playerTransform.gameObject);
-            if (multiplePeopleRequired && secondTrigger != null)
+    public void OnTriggerExitLocal(GameObject playerGO)
+    {
+        Transform playerTransform = playerGO.transform;
+
+        if (physicalPlayersInside.Contains(playerTransform))
+        {
+            physicalPlayersInside.Remove(playerTransform);
+        }
+
+        if (playersInside.Contains(playerTransform))
+        {
+            playersInside.Remove(playerTransform);
+            // Debug.Log($"[InteractWhenCrossed] Player {playerTransform.name} exited trigger {gameObject.name}. Total players inside: {playersInside.Count}");
+        }
+
+        if (multiplePeopleRequired && secondTrigger != null)
+        {
+            if (secondTrigger.playersInside.Contains(playerTransform))
             {
-                secondTrigger.CheckDeactivation(playerTransform.gameObject);
+                secondTrigger.playersInside.Remove(playerTransform);
             }
+        }
+
+        CheckDeactivation(playerTransform.gameObject);
+        if (multiplePeopleRequired && secondTrigger != null)
+        {
+            secondTrigger.CheckDeactivation(playerTransform.gameObject);
         }
     }
 
