@@ -4,7 +4,6 @@ using UnityEngine;
 using UnityEngine.Events;
 using Photon.Pun;
 
-[RequireComponent(typeof(Collider))]
 public class InteractWhenCrossed : MonoBehaviour
 {
     [System.Serializable]
@@ -12,15 +11,12 @@ public class InteractWhenCrossed : MonoBehaviour
 
     [Header("Trigger Settings")]
     [SerializeField] private bool triggerOnce = false;
-    [Range(1, 2)][SerializeField] private int requiredPlayers = 2;
-    [SerializeField] private bool multiplePeopleRequired = false;
-    public bool MultiplePeopleRequired
-    {
-        get => multiplePeopleRequired;
-        set => multiplePeopleRequired = value;
-    }
+    [Range(1, 2)][SerializeField] private int requiredPlayers = 1;
+    public bool MultiplePeopleRequired => requiredPlayers == 2;
 
     [Header("Trigger References")]
+    [SerializeField] private GameObject enterZone;
+    [SerializeField] private GameObject exitZone;
     [SerializeField] private InteractWhenCrossed secondTrigger;
 
     [Header("Events")]
@@ -29,316 +25,278 @@ public class InteractWhenCrossed : MonoBehaviour
     [SerializeField] private PlayerCrossedEvent onBothCross;
     [SerializeField] private PlayerCrossedEvent onBothExit;
 
-    private bool hasTriggered = false;
     private bool isActivated = false;
     private bool isOnePlayerActive = false;
     private bool isBothPlayersActive = false;
     private bool hasTriggeredOnePlayer = false;
     private bool hasTriggeredBothPlayers = false;
-    private List<Transform> playersInside = new List<Transform>();
-    private List<Transform> physicalPlayersInside = new List<Transform>();
+
+    private List<GameObject> playersInside = new List<GameObject>();
 
     public bool IsActivated => isActivated;
-    public int NumOfPlayersCrossed => playersInside.Count;
-    public List<Transform> PlayersInside => playersInside;
-
-    private float cleanTimer = 0f;
-    private const float CLEAN_INTERVAL = 0.1f;
+    public bool IsPlayerEntered => playersInside.Count > 0;
 
     private void Start()
     {
-        // Ensure the collider is set as a trigger
-        Collider col = GetComponent<Collider>();
-        if (col != null)
+        Collider ownCollider = GetComponent<Collider>();
+        if (ownCollider != null)
         {
-            col.isTrigger = true;
+            ownCollider.enabled = false;
+        }
+
+        if (enterZone != null)
+        {
+            TriggerZoneHelper helper = enterZone.GetComponent<TriggerZoneHelper>();
+            if (helper == null) helper = enterZone.AddComponent<TriggerZoneHelper>();
+            helper.onTriggerEnterAction = OnEnterZoneTrigger;
+            
+            // Fallback for single-trigger setup (e.g. standard pressure plates)
+            if (exitZone == null)
+            {
+                helper.onTriggerExitAction = OnExitZoneTrigger;
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[InteractWhenCrossed] {gameObject.name} Enter Zone is not assigned!", this);
+        }
+
+        if (exitZone != null)
+        {
+            TriggerZoneHelper helper = exitZone.GetComponent<TriggerZoneHelper>();
+            if (helper == null) helper = exitZone.AddComponent<TriggerZoneHelper>();
+            helper.onTriggerEnterAction = OnExitZoneTrigger;
         }
     }
 
-    private void Update()
+    private void OnEnterZoneTrigger(GameObject playerGO)
     {
-        if (playersInside.Count > 0)
+        PhotonView pv = GetComponent<PhotonView>();
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            cleanTimer += Time.deltaTime;
-            if (cleanTimer >= CLEAN_INTERVAL)
+            if (pv != null && pv.ViewID > 0)
             {
-                cleanTimer = 0f;
-                int initialCount = playersInside.Count;
-                GameObject cleaned = CleanPlayersInsideList();
-                
-                if (playersInside.Count != initialCount)
+                pv.RPC("SyncTriggerCrossRPC", RpcTarget.All, playerGO.name, true);
+            }
+            else
+            {
+                FirstPersonController localPlayer = FirstPersonController.InteractingPlayer;
+                if (localPlayer == null)
                 {
-                    CheckDeactivation(cleaned);
-                    if (multiplePeopleRequired && secondTrigger != null)
+                    var players = FindObjectsOfType<FirstPersonController>();
+                    foreach (var p in players)
                     {
-                        secondTrigger.CheckDeactivation(cleaned);
+                        if (p.IsLocalPlayer)
+                        {
+                            localPlayer = p;
+                            break;
+                        }
                     }
+                }
+                if (localPlayer != null)
+                {
+                    localPlayer.RouteTriggerCross(this, playerGO, true);
                 }
             }
         }
         else
         {
-            cleanTimer = 0f;
+            OnEnterZoneTriggerLocal(playerGO);
         }
     }
 
-    private void OnTriggerEnter(Collider other)
+    private void OnExitZoneTrigger(GameObject playerGO)
     {
-        FirstPersonController fpc = other.GetComponentInParent<FirstPersonController>();
-        if (fpc != null && fpc.IsLocalPlayer)
+        PhotonView pv = GetComponent<PhotonView>();
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            if (PhotonNetwork.IsConnected)
+            if (pv != null && pv.ViewID > 0)
             {
-                PlayerInteract pi = fpc.GetComponent<PlayerInteract>();
-                if (pi != null)
+                pv.RPC("SyncTriggerCrossRPC", RpcTarget.All, playerGO.name, false);
+            }
+            else
+            {
+                FirstPersonController localPlayer = FirstPersonController.InteractingPlayer;
+                if (localPlayer == null)
                 {
-                    pi.RouteTriggerEnter(this, fpc.gameObject.name);
-                    return;
+                    var players = FindObjectsOfType<FirstPersonController>();
+                    foreach (var p in players)
+                    {
+                        if (p.IsLocalPlayer)
+                        {
+                            localPlayer = p;
+                            break;
+                        }
+                    }
+                }
+                if (localPlayer != null)
+                {
+                    localPlayer.RouteTriggerCross(this, playerGO, false);
                 }
             }
-            OnTriggerEnterLocal(fpc.gameObject);
+        }
+        else
+        {
+            OnExitZoneTriggerLocal(playerGO);
         }
     }
 
-    public void OnTriggerEnterLocal(GameObject playerGO)
+    [PunRPC]
+    private void SyncTriggerCrossRPC(string playerName, bool enter)
     {
-        Transform playerTransform = playerGO.transform;
-        
-        // Clean list first to ensure accurate count
-        CleanPlayersInsideList();
-
-        if (!physicalPlayersInside.Contains(playerTransform))
+        GameObject playerGO = GameObject.Find(playerName);
+        if (playerGO != null)
         {
-            physicalPlayersInside.Add(playerTransform);
-        }
-
-        if (!playersInside.Contains(playerTransform))
-        {
-            playersInside.Add(playerTransform);
-            // Debug.Log($"[InteractWhenCrossed] Player {playerTransform.name} entered trigger {gameObject.name}. Total players inside: {playersInside.Count}");
-        }
-
-        if (multiplePeopleRequired && secondTrigger != null)
-        {
-            if (!secondTrigger.playersInside.Contains(playerTransform))
+            if (enter)
             {
-                secondTrigger.playersInside.Add(playerTransform);
+                OnEnterZoneTriggerLocal(playerGO);
+            }
+            else
+            {
+                OnExitZoneTriggerLocal(playerGO);
             }
         }
-
-        CheckActivation(playerTransform.gameObject);
-        if (multiplePeopleRequired && secondTrigger != null)
-        {
-            secondTrigger.CheckActivation(playerTransform.gameObject);
-        }
     }
 
-    private void OnTriggerExit(Collider other)
+    public void OnEnterZoneTriggerLocal(GameObject player)
     {
-        FirstPersonController fpc = other.GetComponentInParent<FirstPersonController>();
-        if (fpc != null && fpc.IsLocalPlayer)
+        if (!playersInside.Contains(player))
         {
-            if (PhotonNetwork.IsConnected)
-            {
-                PlayerInteract pi = fpc.GetComponent<PlayerInteract>();
-                if (pi != null)
-                {
-                    pi.RouteTriggerExit(this, fpc.gameObject.name);
-                    return;
-                }
-            }
-            OnTriggerExitLocal(fpc.gameObject);
-        }
-    }
-
-    public void OnTriggerExitLocal(GameObject playerGO)
-    {
-        Transform playerTransform = playerGO.transform;
-
-        if (physicalPlayersInside.Contains(playerTransform))
-        {
-            physicalPlayersInside.Remove(playerTransform);
+            playersInside.Add(player);
+            Debug.Log($"[InteractWhenCrossed] {gameObject.name} Enter Zone triggered by {player.name}. Count: {playersInside.Count}/{requiredPlayers}");
         }
 
-        if (playersInside.Contains(playerTransform))
-        {
-            playersInside.Remove(playerTransform);
-            // Debug.Log($"[InteractWhenCrossed] Player {playerTransform.name} exited trigger {gameObject.name}. Total players inside: {playersInside.Count}");
-        }
-
-        if (multiplePeopleRequired && secondTrigger != null)
-        {
-            if (secondTrigger.playersInside.Contains(playerTransform))
-            {
-                secondTrigger.playersInside.Remove(playerTransform);
-            }
-        }
-
-        CheckDeactivation(playerTransform.gameObject);
-        if (multiplePeopleRequired && secondTrigger != null)
-        {
-            secondTrigger.CheckDeactivation(playerTransform.gameObject);
-        }
-    }
-
-    private GameObject CleanPlayersInsideList()
-    {
-        GameObject cleanedPlayer = null;
-        for (int i = playersInside.Count - 1; i >= 0; i--)
-        {
-            Transform player = playersInside[i];
-            if (player == null || !player.gameObject.activeInHierarchy || !IsPlayerPhysicallyInside(player))
-            {
-                Debug.Log($"[InteractWhenCrossed] Cleaning player {player?.name} from trigger {gameObject.name} (Null/Inactive/Outside).");
-                if (player != null)
-                {
-                    cleanedPlayer = player.gameObject;
-                }
-                playersInside.RemoveAt(i);
-            }
-        }
-
-        for (int i = physicalPlayersInside.Count - 1; i >= 0; i--)
-        {
-            Transform player = physicalPlayersInside[i];
-            if (player == null || !player.gameObject.activeInHierarchy || !IsPlayerPhysicallyInside(player))
-            {
-                if (player != null && cleanedPlayer == null)
-                {
-                    cleanedPlayer = player.gameObject;
-                }
-                physicalPlayersInside.RemoveAt(i);
-            }
-        }
-
-        return cleanedPlayer;
-    }
-
-    private bool IsPlayerPhysicallyInside(Transform playerTransform)
-    {
-        if (playerTransform == null) return false;
-        
-        Collider triggerCollider = GetComponent<Collider>();
-        if (triggerCollider == null) return false;
-
-        Vector3 closestPoint = triggerCollider.ClosestPoint(playerTransform.position);
-        float distance = Vector3.Distance(closestPoint, playerTransform.position);
-        
-        // 3.0f tolerance to allow jumping / physics lag but filter out teleports/respawns
-        return distance < 3.0f;
-    }
-
-    private void CheckActivation(GameObject player)
-    {
-        // 1 Player Crossed (based on physical presence)
-        if (physicalPlayersInside.Count >= 1)
+        // 1. Single plate activation condition met
+        if (playersInside.Count >= requiredPlayers)
         {
             if (!isOnePlayerActive)
             {
+                isOnePlayerActive = true;
+                isActivated = true;
                 if (!triggerOnce || !hasTriggeredOnePlayer)
                 {
-                    isOnePlayerActive = true;
                     hasTriggeredOnePlayer = true;
-                    // Debug.Log($"[InteractWhenCrossed] 1 Player Crossed: {gameObject.name} by {player?.name}");
                     onCross?.Invoke(player);
                 }
             }
-        }
 
-        // Both Players Crossed (based on synced presence)
-        if (playersInside.Count >= 2)
-        {
-            if (!isBothPlayersActive)
+            // 2. Both plates activation condition met (if secondTrigger is assigned)
+            if (secondTrigger != null)
             {
-                if (!triggerOnce || !hasTriggeredBothPlayers)
+                // Check if second trigger also has enough players to be activated
+                if (secondTrigger.playersInside.Count >= secondTrigger.requiredPlayers)
                 {
-                    isBothPlayersActive = true;
-                    hasTriggeredBothPlayers = true;
-                    // Debug.Log($"[InteractWhenCrossed] Both Players Crossed: {gameObject.name} by {player?.name}");
-                    onBothCross?.Invoke(player);
+                    if (!isBothPlayersActive)
+                    {
+                        if (!triggerOnce || !hasTriggeredBothPlayers)
+                        {
+                            ActivateBoth(player);
+                        }
+                    }
                 }
             }
         }
-
-        // Update legacy activation flag
-        if (playersInside.Count >= requiredPlayers)
-        {
-            isActivated = true;
-            hasTriggered = true;
-        }
     }
 
-    private void CheckDeactivation(GameObject player)
+    public void OnExitZoneTriggerLocal(GameObject player)
     {
-        // Both Players Exited (goes from 2 to < 2, based on synced presence)
-        if (isBothPlayersActive && playersInside.Count < 2)
+        if (playersInside.Contains(player))
         {
-            isBothPlayersActive = false;
-            // Debug.Log($"[InteractWhenCrossed] Both Players Exited: {gameObject.name} by {player?.name}");
-            onBothExit?.Invoke(player);
+            playersInside.Remove(player);
+            Debug.Log($"[InteractWhenCrossed] {gameObject.name} Exit Zone triggered by {player.name}. Count: {playersInside.Count}/{requiredPlayers}");
         }
 
-        // 1 Player Exited (goes from 1 to 0, based on physical presence)
-        if (isOnePlayerActive && physicalPlayersInside.Count < 1)
-        {
-            isOnePlayerActive = false;
-            // Debug.Log($"[InteractWhenCrossed] 1 Player Exited: {gameObject.name} by {player?.name}");
-            onExit?.Invoke(player);
-        }
-
-        // Update legacy activation flag
+        // 1. Single plate deactivation condition met
         if (playersInside.Count < requiredPlayers)
         {
-            isActivated = false;
+            if (isOnePlayerActive)
+            {
+                isOnePlayerActive = false;
+                isActivated = false;
+                onExit?.Invoke(player);
+            }
+
+            // 2. Both plates deactivation condition met (if secondTrigger is assigned)
+            if (secondTrigger != null)
+            {
+                if (isBothPlayersActive)
+                {
+                    DeactivateBoth(player);
+                }
+            }
         }
     }
 
-    public void Activate(GameObject player)
+    private void ActivateBoth(GameObject player)
     {
+        isBothPlayersActive = true;
+        hasTriggeredBothPlayers = true;
         isActivated = true;
-        hasTriggered = true;
+        onBothCross?.Invoke(player);
 
-        if (!isOnePlayerActive)
+        if (secondTrigger != null)
         {
-            isOnePlayerActive = true;
-            hasTriggeredOnePlayer = true;
-            onCross?.Invoke(player);
-        }
-
-        if (playersInside.Count >= 2 && !isBothPlayersActive)
-        {
-            isBothPlayersActive = true;
-            hasTriggeredBothPlayers = true;
-            onBothCross?.Invoke(player);
+            secondTrigger.isBothPlayersActive = true;
+            secondTrigger.hasTriggeredBothPlayers = true;
+            secondTrigger.isActivated = true;
+            secondTrigger.onBothCross?.Invoke(player);
         }
     }
 
-    public void Deactivate(GameObject player)
+    private void DeactivateBoth(GameObject player)
     {
+        isBothPlayersActive = false;
         isActivated = false;
+        onBothExit?.Invoke(player);
 
-        if (isBothPlayersActive)
+        if (secondTrigger != null)
         {
-            isBothPlayersActive = false;
-            onBothExit?.Invoke(player);
-        }
-
-        if (isOnePlayerActive)
-        {
-            isOnePlayerActive = false;
-            onExit?.Invoke(player);
+            secondTrigger.isBothPlayersActive = false;
+            secondTrigger.isActivated = false;
+            secondTrigger.onBothExit?.Invoke(player);
         }
     }
 
-    public void ResetTrigger()
+    // Kept for backward compatibility with old RPCs in PlayerInteract.cs
+    public void OnTriggerEnterLocal(GameObject player)
     {
-        hasTriggered = false;
+        OnEnterZoneTriggerLocal(player);
+    }
+
+    public void OnTriggerExitLocal(GameObject player)
+    {
+        OnExitZoneTriggerLocal(player);
+    }
+
+    public void ResetTriggerState()
+    {
         isActivated = false;
         isOnePlayerActive = false;
         isBothPlayersActive = false;
         hasTriggeredOnePlayer = false;
         hasTriggeredBothPlayers = false;
         playersInside.Clear();
-        physicalPlayersInside.Clear();
+    }
+}
+
+public class TriggerZoneHelper : MonoBehaviour
+{
+    public System.Action<GameObject> onTriggerEnterAction;
+    public System.Action<GameObject> onTriggerExitAction;
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.gameObject.CompareTag("Player"))
+        {
+            onTriggerEnterAction?.Invoke(other.gameObject);
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.gameObject.CompareTag("Player"))
+        {
+            onTriggerExitAction?.Invoke(other.gameObject);
+        }
     }
 }

@@ -14,8 +14,7 @@ public class TorchInteractable : MonoBehaviour, IInteractable
     [Tooltip("Optional reference to the specific torch mesh/object to hide. If left unassigned, it will look for a child with 'Pickup' or 'Torch' in its name, or default to this GameObject.")]
     public GameObject torchObjectToHide;
 
-    // Interface Properties
-    public bool MultiplePeopleRequired { get; set; } = false;
+
 
     private void Start()
     {
@@ -189,9 +188,5 @@ public class TorchInteractable : MonoBehaviour, IInteractable
         }
     }
 
-    // Interface placeholder methods
-    public void Activate() {}
-    public void Deactivate() {}
-    public void OnActivate() {}
-    public void OnDeactivate() {}
+
 }

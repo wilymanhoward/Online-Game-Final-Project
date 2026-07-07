@@ -100,8 +100,14 @@ public class FirstPersonController : MonoBehaviourPun
     public float fatalAirTimeThreshold = 3.0f;
     private float airTimeCounter = 0f;
 
+    [Header("Moving Platform Settings")]
+    [SerializeField] private LayerMask platformLayer;
+    private Transform activePlatform;
+    private Vector3 localPlayerPos;
+
     [Header("Input Settings")]
     [SerializeField] private InputReader inputReader;
+    public InputReader InputReader => inputReader;
 
     // Camera shake fields
     private Vector3 cameraShakeOffset = Vector3.zero;
@@ -151,7 +157,7 @@ public class FirstPersonController : MonoBehaviourPun
                 }
                 else
                 {
-                    return photonView.IsMine;
+                    return photonView != null && photonView.IsMine;
                 }
             }
             else
@@ -184,6 +190,12 @@ public class FirstPersonController : MonoBehaviourPun
     {
         controller = GetComponent<CharacterController>();
         animator = GetComponent<Animator>();
+
+        // Automatically ensure PlayerCheckpointHandler is attached
+        if (GetComponent<PlayerCheckpointHandler>() == null)
+        {
+            gameObject.AddComponent<PlayerCheckpointHandler>();
+        }
 
         // Ensure player has a kinematic Rigidbody so OnTriggerEnter is processed correctly by Unity's physics system
         Rigidbody rb = GetComponent<Rigidbody>();
@@ -368,11 +380,35 @@ public class FirstPersonController : MonoBehaviourPun
                 inputReader = readers[0];
             }
         }
+
+        // Initialize moving platform layer if not set
+        if (platformLayer == 0)
+        {
+            platformLayer = LayerMask.GetMask("Platform");
+        }
     }
 
     void Update()
     {
         if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
+
+        // Apply moving platform delta if standing on one
+        if (activePlatform != null)
+        {
+            Vector3 newWorldPos = activePlatform.TransformPoint(localPlayerPos);
+            Vector3 platformDelta = newWorldPos - transform.position;
+
+            // Only follow horizontal movement if in mid-air (prevent snapping/jumping snags)
+            if (!controller.isGrounded)
+            {
+                platformDelta.y = 0f;
+            }
+
+            if (platformDelta.sqrMagnitude > 0.0001f)
+            {
+                controller.Move(platformDelta);
+            }
+        }
 
         bool disableMovement = isParalyzed || (inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptLook || inputReader.AreInputsDisabledExceptInteract));
 
@@ -537,6 +573,19 @@ public class FirstPersonController : MonoBehaviourPun
 
         // Move character controller
         controller.Move(move * Time.deltaTime);
+
+        // Update Moving Platform detection
+        RaycastHit platformHit;
+        Vector3 platformRayStart = transform.position + Vector3.up * 0.1f;
+        if (Physics.Raycast(platformRayStart, Vector3.down, out platformHit, 0.3f, platformLayer))
+        {
+            activePlatform = platformHit.transform;
+            localPlayerPos = activePlatform.InverseTransformPoint(transform.position);
+        }
+        else
+        {
+            activePlatform = null;
+        }
 
         // Update air time counter and check for fatal landings
         if (controller.isGrounded)
@@ -989,73 +1038,10 @@ public class FirstPersonController : MonoBehaviourPun
 
 
 
-    private bool CompareSafeTag(Collider col, string tag)
+    public void SetCheckpoint(Vector3 position)
     {
-        if (col == null) return false;
-        try
-        {
-            return col.gameObject.tag == tag;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private void OnTriggerEnter(Collider other)
-    {
-        // Only execute checkpoint saving and death zones for the local player
-        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
-
-        if (CompareSafeTag(other, "Checkpoint"))
-        {
-            // Try to find a custom designated spawn point child, otherwise use the player's exact contact position
-            Transform spawnPoint = other.transform.Find("SpawnPoint");
-            if (spawnPoint == null) spawnPoint = other.transform.Find("Spawn");
-
-            if (spawnPoint != null)
-            {
-                activeCheckpointPosition = spawnPoint.position;
-            }
-            else
-            {
-                activeCheckpointPosition = transform.position;
-            }
-            Debug.Log("Checkpoint saved at: " + activeCheckpointPosition);
-        }
-        else if (CompareSafeTag(other, "KillZone") || CompareSafeTag(other, "DeadZone"))
-        {
-            Debug.Log("Respawn triggered via OnTriggerEnter with: " + other.gameObject.name + ", Tag: " + other.gameObject.tag);
-            Respawn();
-        }
-    }
-
-    private void OnControllerColliderHit(ControllerColliderHit hit)
-    {
-        // Handle solid physical checkpoints and death zones
-        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
-
-        if (CompareSafeTag(hit.collider, "Checkpoint"))
-        {
-            // Try to find a custom designated spawn point child, otherwise use the player's exact contact position
-            Transform spawnPoint = hit.collider.transform.Find("SpawnPoint");
-            if (spawnPoint == null) spawnPoint = hit.collider.transform.Find("Spawn");
-
-            if (spawnPoint != null)
-            {
-                activeCheckpointPosition = spawnPoint.position;
-            }
-            else
-            {
-                activeCheckpointPosition = transform.position;
-            }
-            Debug.Log("Checkpoint saved (via controller hit) at: " + activeCheckpointPosition);
-        }
-        else if (CompareSafeTag(hit.collider, "KillZone") || CompareSafeTag(hit.collider, "DeadZone"))
-        {
-            Debug.Log("Respawn triggered via OnControllerColliderHit with: " + hit.collider.gameObject.name + ", Tag: " + hit.collider.gameObject.tag);
-            Respawn();
-        }
+        activeCheckpointPosition = position;
+        Debug.Log("Checkpoint saved at: " + activeCheckpointPosition);
     }
 
     public void ResetAirTime()
@@ -1325,5 +1311,427 @@ public class FirstPersonController : MonoBehaviourPun
         cameraShakeOffset = Vector3.zero;
     }
 
+    public void RouteLeverInteract(InteractLever lever)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncLeverInteractRPC", RpcTarget.All, GetGameObjectPath(lever.gameObject));
+        }
+    }
 
+    [PunRPC]
+    private void SyncLeverInteractRPC(string path)
+    {
+        GameObject go = GameObject.Find(path);
+        if (go != null)
+        {
+            InteractLever lever = go.GetComponent<InteractLever>();
+            if (lever != null)
+            {
+                PlayerInteract pi = GetComponent<PlayerInteract>();
+                lever.InteractLocal(pi);
+            }
+        }
+    }
+
+    public void RouteBothLevers(InteractLever lever, bool active)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncBothLeversRPC", RpcTarget.All, GetGameObjectPath(lever.gameObject), active);
+        }
+    }
+
+    public void RouteResetLevers(InteractLever lever)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncResetLeversRPC", RpcTarget.All, GetGameObjectPath(lever.gameObject));
+        }
+    }
+
+    [PunRPC]
+    private void SyncResetLeversRPC(string leverPath)
+    {
+        GameObject go = GameObject.Find(leverPath);
+        if (go != null)
+        {
+            InteractLever lever = go.GetComponent<InteractLever>();
+            if (lever != null)
+            {
+                lever.ResetBothLeversLocal();
+            }
+        }
+    }
+
+    public void RouteRedLightShoot(Vector3 spawnPos, Vector3 direction)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SpawnRedLightProjectileRPC", RpcTarget.All, spawnPos, direction);
+        }
+    }
+
+    [PunRPC]
+    private void SpawnRedLightProjectileRPC(Vector3 spawnPos, Vector3 direction)
+    {
+        RedLightShooter shooter = FindObjectOfType<RedLightShooter>();
+        if (shooter != null)
+        {
+            shooter.SpawnProjectileLocal(spawnPos, direction);
+        }
+    }
+
+    [PunRPC]
+    private void SyncBothLeversRPC(string leverPath, bool active)
+    {
+        GameObject go = GameObject.Find(leverPath);
+        if (go != null)
+        {
+            InteractLever lever = go.GetComponent<InteractLever>();
+            if (lever != null)
+            {
+                if (active)
+                {
+                    lever.ActivateBothLeversLocal();
+                }
+                else
+                {
+                    lever.DeactivateBothLeversLocal();
+                }
+            }
+        }
+    }
+
+    public void RouteTriggerCross(InteractWhenCrossed trigger, GameObject player, bool enter)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncTriggerCrossRPC", RpcTarget.All, GetGameObjectPath(trigger.gameObject), GetGameObjectPath(player), enter);
+        }
+    }
+
+    [PunRPC]
+    private void SyncTriggerCrossRPC(string triggerPath, string playerPath, bool enter)
+    {
+        GameObject goTrigger = GameObject.Find(triggerPath);
+        GameObject goPlayer = GameObject.Find(playerPath);
+        if (goTrigger != null && goPlayer != null)
+        {
+            InteractWhenCrossed trigger = goTrigger.GetComponent<InteractWhenCrossed>();
+            if (trigger != null)
+            {
+                if (enter)
+                {
+                    trigger.OnEnterZoneTriggerLocal(goPlayer);
+                }
+                else
+                {
+                    trigger.OnExitZoneTriggerLocal(goPlayer);
+                }
+            }
+        }
+    }
+
+    // --- Puppet Game Routing ---
+    public void RoutePuppetStartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetStartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetStartGameRPC()
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.StartGameLocal();
+        }
+    }
+
+    public void RoutePuppetRestartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetRestartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetRestartGameRPC()
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.RestartGameLocal();
+        }
+    }
+
+    public void RoutePuppetEndGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetEndGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetEndGameRPC()
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.EndGameLocal();
+        }
+    }
+
+    public void RoutePuppetSyncRoundState(int[] poseIndices, int answerSymbolID)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetRoundStateRPC", RpcTarget.All, poseIndices, answerSymbolID);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetRoundStateRPC(int[] poseIndices, int answerSymbolID)
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.SyncRoundStateLocal(poseIndices, answerSymbolID);
+        }
+    }
+
+    public void RoutePuppetGuessSymbol(int GuessSymbolID)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetGuessSymbolRPC", RpcTarget.All, GuessSymbolID);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetGuessSymbolRPC(int GuessSymbolID)
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.GuessSymbolLocal(GuessSymbolID);
+        }
+    }
+
+    public void RoutePuppetTimeUp()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetTimeUpRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetTimeUpRPC()
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.TimeUpLocal();
+        }
+    }
+
+    // --- Falling Floors Routing ---
+    public void RouteFallingFloorsStartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncFallingFloorsStartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncFallingFloorsStartGameRPC()
+    {
+        FallingFloors ff = FindObjectOfType<FallingFloors>();
+        if (ff != null)
+        {
+            ff.StartGameLocal();
+        }
+    }
+
+    public void RouteFallingFloorsRestartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncFallingFloorsRestartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncFallingFloorsRestartGameRPC()
+    {
+        FallingFloors ff = FindObjectOfType<FallingFloors>();
+        if (ff != null)
+        {
+            ff.RestartGameLocal();
+        }
+    }
+
+    public void RouteFallingFloorsEndGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncFallingFloorsEndGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncFallingFloorsEndGameRPC()
+    {
+        FallingFloors ff = FindObjectOfType<FallingFloors>();
+        if (ff != null)
+        {
+            ff.EndGameLocal();
+        }
+    }
+
+    public void RouteFallingFloorsSyncTransition(int round, int nextStateVal, int[] symbols)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncFallingFloorsTransitionRPC", RpcTarget.All, round, nextStateVal, symbols);
+        }
+    }
+
+    [PunRPC]
+    private void SyncFallingFloorsTransitionRPC(int round, int nextStateVal, int[] symbols)
+    {
+        FallingFloors ff = FindObjectOfType<FallingFloors>();
+        if (ff != null)
+        {
+            ff.SyncTransitionLocal(round, nextStateVal, symbols);
+        }
+    }
+
+    // --- Red Light Green Light Routing ---
+    public void RouteRedLightStartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightStartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightStartGameRPC()
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.StartGameLocal();
+        }
+    }
+
+    public void RouteRedLightRestartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightRestartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightRestartGameRPC()
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.RestartGameLocal();
+        }
+    }
+
+    public void RouteRedLightEndGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightEndGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightEndGameRPC()
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.EndGameLocal();
+        }
+    }
+
+    public void RouteRedLightWinGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightWinGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightWinGameRPC()
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.WinGameLocal();
+        }
+    }
+
+    public void RouteRedLightSyncState(int stateVal, float duration)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightStateRPC", RpcTarget.All, stateVal, duration);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightStateRPC(int stateVal, float duration)
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.SyncStateLocal((RedLightGreenLight.GameState)stateVal, duration);
+        }
+    }
+
+    public void RouteRedLightPlayWarning()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightPlayWarningRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightPlayWarningRPC()
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.PlayWarningLocal();
+        }
+    }
+
+    private string GetGameObjectPath(GameObject obj)
+    {
+        string path = obj.name;
+        while (obj.transform.parent != null)
+        {
+            obj = obj.transform.parent.gameObject;
+            path = obj.name + "/" + path;
+        }
+        return path;
+    }
 }

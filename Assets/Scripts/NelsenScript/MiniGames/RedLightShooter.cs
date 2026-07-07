@@ -87,23 +87,51 @@ public class RedLightShooter : MonoBehaviour
 
     private void ShootAtPlayer(FirstPersonController player, Vector3 spawnPos, Vector3 direction)
     {
-        Debug.Log($"[RedLightShooter] Shooting projectile at {player.name} along raycast path!");
-        Quaternion rotation = Quaternion.LookRotation(direction);
+        Debug.Log($"[RedLightShooter] Shooting projectile at {player.name}!");
 
-        if (PhotonNetwork.IsConnected)
+        PhotonView pv = GetComponent<PhotonView>();
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            GameObject proj = PhotonNetwork.Instantiate(networkProjectilePrefabName, spawnPos, rotation);
-            Rigidbody rb = proj.GetComponent<Rigidbody>();
-            if (rb != null)
+            if (pv != null && pv.ViewID > 0)
             {
-                rb.isKinematic = true; // Kinematic Rigidbody
+                pv.RPC("SpawnProjectileRPC", RpcTarget.All, spawnPos, direction);
             }
-            return;
+            else
+            {
+                // Route through local player controller
+                FirstPersonController localPlayer = null;
+                var controllers = FindObjectsOfType<FirstPersonController>();
+                foreach (var c in controllers)
+                {
+                    if (c.IsLocalPlayer)
+                    {
+                        localPlayer = c;
+                        break;
+                    }
+                }
+                if (localPlayer != null)
+                {
+                    localPlayer.RouteRedLightShoot(spawnPos, direction);
+                }
+            }
         }
+        else
+        {
+            SpawnProjectileLocal(spawnPos, direction);
+        }
+    }
 
-        // Offline / local fallback
+    [PunRPC]
+    private void SpawnProjectileRPC(Vector3 spawnPos, Vector3 direction)
+    {
+        SpawnProjectileLocal(spawnPos, direction);
+    }
+
+    public void SpawnProjectileLocal(Vector3 spawnPos, Vector3 direction)
+    {
         if (projectilePrefab != null)
         {
+            Quaternion rotation = Quaternion.LookRotation(direction);
             GameObject proj = Instantiate(projectilePrefab, spawnPos, rotation);
             Rigidbody rb = proj.GetComponent<Rigidbody>();
             if (rb != null)

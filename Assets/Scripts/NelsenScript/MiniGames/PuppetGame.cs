@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using Photon.Pun;
+using ExitGames.Client.Photon;
+using Hashtable = ExitGames.Client.Photon.Hashtable;
 
 public class PuppetGame : MonoBehaviour, IGames
 {
@@ -58,6 +60,67 @@ public class PuppetGame : MonoBehaviour, IGames
 
     private void Start() {
         InitDictionaries();
+        LoadStateFromRoomProperties();
+    }
+
+    private void LoadStateFromRoomProperties() {
+        if (!PhotonNetwork.IsConnected || !PhotonNetwork.InRoom) return;
+
+        var room = PhotonNetwork.CurrentRoom;
+        if (room == null || room.CustomProperties == null) return;
+
+        if (room.CustomProperties.TryGetValue("Puppet_GameStarted", out object startedObj) && (bool)startedObj) {
+            Debug.Log("[PuppetGame] Resuming PuppetGame state from Room Properties...");
+            
+            if (room.CustomProperties.TryGetValue("Puppet_RoundsWon", out object roundsObj)) {
+                RoundsWon = (int)roundsObj;
+            }
+            if (room.CustomProperties.TryGetValue("Puppet_FailCounter", out object failObj)) {
+                FailCounter = (int)failObj;
+            }
+            if (room.CustomProperties.TryGetValue("Puppet_CorrectSymbols", out object symbolsObj)) {
+                int[] symbols = (int[])symbolsObj;
+                correctlyGuessedSymbols.Clear();
+                if (symbols != null) {
+                    correctlyGuessedSymbols.AddRange(symbols);
+                }
+            }
+
+            RestoreGuessedLevers();
+
+            if (PhotonNetwork.IsMasterClient && RoundsWon < RoundsToWin && FailCounter < MaxFailAttempts) {
+                GenerateRandomGuess();
+            }
+        }
+    }
+
+    private void RestoreGuessedLevers() {
+        for (int i = 0; i < GuesserSymbol.Count; i++) {
+            guesserSymbol s = GuesserSymbol[i];
+            if (correctlyGuessedSymbols.Contains(s.SymbolID)) {
+                s.Guessed = true;
+                GuesserSymbol[i] = s;
+
+                MoveRotateObject mro = s.symbolObject != null
+                    ? s.symbolObject.GetComponent<MoveRotateObject>()
+                    : null;
+                if (mro != null) {
+                    mro.Activate(0f, true);
+                }
+            }
+        }
+    }
+
+    private void SaveStateToRoomProperties(bool started) {
+        if (!PhotonNetwork.IsConnected || !PhotonNetwork.InRoom) return;
+
+        Hashtable props = new Hashtable();
+        props["Puppet_GameStarted"] = started;
+        props["Puppet_RoundsWon"] = RoundsWon;
+        props["Puppet_FailCounter"] = FailCounter;
+        props["Puppet_CorrectSymbols"] = correctlyGuessedSymbols.ToArray();
+
+        PhotonNetwork.CurrentRoom?.SetCustomProperties(props);
     }
 
     private void InitDictionaries() {
@@ -67,20 +130,55 @@ public class PuppetGame : MonoBehaviour, IGames
 
     private void Update() {
         if (StartTime) {
-            currentTime += Time.deltaTime;
-            if (currentTime >= totalTime) {
-                // Time ran out — wrong by default, count as a fail
-                StopTimer();
-                FailCounter++;
-                Debug.Log($"[PuppetGame] Time up! Fails: {FailCounter}/{MaxFailAttempts}");
-                if (FailCounter >= MaxFailAttempts) {
-                    EndGame();
-                } else {
-                    RestartTime();
-                    GenerateRandomGuess();
+            if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+                currentTime += Time.deltaTime;
+                if (currentTime >= totalTime) {
+                    PhotonView pv = GetComponent<PhotonView>();
+                    if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0) {
+                        pv.RPC("TimeUpRPC", RpcTarget.All);
+                    } else if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom) {
+                        FirstPersonController localPlayer = FindLocalPlayer();
+                        if (localPlayer != null) {
+                            localPlayer.RoutePuppetTimeUp();
+                        }
+                    } else {
+                        TimeUpLocal();
+                    }
                 }
+            } else {
+                currentTime += Time.deltaTime;
             }
         }
+    }
+
+    [PunRPC]
+    private void TimeUpRPC() {
+        TimeUpLocal();
+    }
+
+    public void TimeUpLocal() {
+        StopTimer();
+        FailCounter++;
+        Debug.Log($"[PuppetGame] Time up! Fails: {FailCounter}/{MaxFailAttempts}");
+        if (FailCounter >= MaxFailAttempts) {
+            EndGameLocal();
+        } else {
+            RestartTime();
+            if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+                SaveStateToRoomProperties(true);
+                GenerateRandomGuess();
+            }
+        }
+    }
+
+    private FirstPersonController FindLocalPlayer() {
+        var controllers = FindObjectsOfType<FirstPersonController>();
+        foreach (var c in controllers) {
+            if (c.IsLocalPlayer) {
+                return c;
+            }
+        }
+        return null;
     }
 
     #endregion
@@ -88,31 +186,117 @@ public class PuppetGame : MonoBehaviour, IGames
     #region IGames
 
     public void StartGame() {
+        PhotonView pv = GetComponent<PhotonView>();
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom) {
+            if (pv != null && pv.ViewID > 0) {
+                if (PhotonNetwork.IsMasterClient) {
+                    pv.RPC("StartGameRPC", RpcTarget.All);
+                }
+            } else {
+                FirstPersonController localPlayer = FindLocalPlayer();
+                if (localPlayer != null && PhotonNetwork.IsMasterClient) {
+                    localPlayer.RoutePuppetStartGame();
+                }
+            }
+        } else {
+            StartGameLocal();
+        }
+    }
+
+    [PunRPC]
+    private void StartGameRPC() {
+        StartGameLocal();
+    }
+
+    public void StartGameLocal() {
         InitDictionaries();
         RestartWins();
         RestartTime();
-        Debug.Log("[PuppetGame] StartGame called.");
+        if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+            SaveStateToRoomProperties(true);
+        }
+        Debug.Log("[PuppetGame] StartGame called locally.");
         OnGameStartEvent?.Invoke();
-        nextRoundCoroutine = StartCoroutine(DelayedNextRound(2.0f));
+        if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+            StopGameCoroutines();
+            nextRoundCoroutine = StartCoroutine(DelayedNextRound(2.0f));
+        }
     }
 
     public void RestartGame() {
-        Debug.Log("[PuppetGame] RestartGame called.");
+        PhotonView pv = GetComponent<PhotonView>();
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom) {
+            if (pv != null && pv.ViewID > 0) {
+                if (PhotonNetwork.IsMasterClient) {
+                    pv.RPC("RestartGameRPC", RpcTarget.All);
+                }
+            } else {
+                FirstPersonController localPlayer = FindLocalPlayer();
+                if (localPlayer != null && PhotonNetwork.IsMasterClient) {
+                    localPlayer.RoutePuppetRestartGame();
+                }
+            }
+        } else {
+            RestartGameLocal();
+        }
+    }
+
+    [PunRPC]
+    private void RestartGameRPC() {
+        RestartGameLocal();
+    }
+
+    public void RestartGameLocal() {
+        Debug.Log("[PuppetGame] RestartGame called locally.");
         StartTime = false;
         Restart();
+        if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+            SaveStateToRoomProperties(true);
+        }
     }
 
     public void EndGame() {
+        PhotonView pv = GetComponent<PhotonView>();
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom) {
+            if (pv != null && pv.ViewID > 0) {
+                if (PhotonNetwork.IsMasterClient) {
+                    pv.RPC("EndGameRPC", RpcTarget.All);
+                }
+            } else {
+                FirstPersonController localPlayer = FindLocalPlayer();
+                if (localPlayer != null && PhotonNetwork.IsMasterClient) {
+                    localPlayer.RoutePuppetEndGame();
+                }
+            }
+        } else {
+            EndGameLocal();
+        }
+    }
+
+    [PunRPC]
+    private void EndGameRPC() {
+        EndGameLocal();
+    }
+
+    public void EndGameLocal() {
         StopTimer();
-        Debug.Log("[PuppetGame] EndGame called.");
+        Debug.Log("[PuppetGame] EndGame called locally.");
         ResetPuppetsToIdle();
+        if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+            if (PhotonNetwork.InRoom) {
+                Hashtable props = new Hashtable { { "Puppet_GameStarted", false } };
+                PhotonNetwork.CurrentRoom.SetCustomProperties(props);
+            }
+        }
         if (RoundsWon >= RoundsToWin) {
             Debug.Log("[PuppetGame] Game Won!");
             OnGameWonEvent?.Invoke();
         } else {
             Debug.Log("[PuppetGame] Game Lost. Restarting.");
             OnGameLostEvent?.Invoke();
-            RestartGame();
+            if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+                RestartGame();
+            }
         }
     }
 
@@ -179,15 +363,24 @@ public class PuppetGame : MonoBehaviour, IGames
         }
 
         PhotonView pv = GetComponent<PhotonView>();
-        if (PhotonNetwork.IsConnected && pv != null) {
+        if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0) {
             pv.RPC("SyncRoundState", RpcTarget.All, poseIndices, answerSymbolID);
+        } else if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom) {
+            FirstPersonController localPlayer = FindLocalPlayer();
+            if (localPlayer != null) {
+                localPlayer.RoutePuppetSyncRoundState(poseIndices, answerSymbolID);
+            }
         } else {
-            SyncRoundState(poseIndices, answerSymbolID);
+            SyncRoundStateLocal(poseIndices, answerSymbolID);
         }
     }
 
     [PunRPC]
     private void SyncRoundState(int[] poseIndices, int answerSymbolID) {
+        SyncRoundStateLocal(poseIndices, answerSymbolID);
+    }
+
+    public void SyncRoundStateLocal(int[] poseIndices, int answerSymbolID) {
         hasGuessed = false;
 
         for (int i = 0; i < GuesserSymbol.Count; i++) {
@@ -248,13 +441,26 @@ public class PuppetGame : MonoBehaviour, IGames
         }
     }
 
-    /// <summary>
-    /// Called by an interact lever for each guesser symbol.
-    /// If already guessed this round, does nothing (timer already stopped).
-    /// Correct: activates the symbol object's MoveRotateObject.
-    /// Wrong:   deactivates it, resets Guessed flag, increments FailCounter.
-    /// </summary>
     public void GuessSymbol(int GuessSymbolID) {
+        PhotonView pv = GetComponent<PhotonView>();
+        if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0) {
+            pv.RPC("GuessSymbolRPC", RpcTarget.All, GuessSymbolID);
+        } else if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom) {
+            FirstPersonController localPlayer = FindLocalPlayer();
+            if (localPlayer != null) {
+                localPlayer.RoutePuppetGuessSymbol(GuessSymbolID);
+            }
+        } else {
+            GuessSymbolLocal(GuessSymbolID);
+        }
+    }
+
+    [PunRPC]
+    private void GuessSymbolRPC(int GuessSymbolID) {
+        GuessSymbolLocal(GuessSymbolID);
+    }
+
+    public void GuessSymbolLocal(int GuessSymbolID) {
         if (hasGuessed) return; // Already guessed this round
         hasGuessed = true;
 
@@ -280,12 +486,21 @@ public class PuppetGame : MonoBehaviour, IGames
             if (mro != null) mro.Activate();
             RoundsWon++;
             correctlyGuessedSymbols.Add(GuessSymbolID);
+            
+            if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+                SaveStateToRoomProperties(true);
+            }
+
             Debug.Log($"[PuppetGame] You answered correctly! You guessed {GuessSymbolID}. RoundsWon: {RoundsWon}/{RoundsToWin}");
             if (RoundsWon >= RoundsToWin) {
-                endGameCoroutine = StartCoroutine(DelayedEndGame(2.0f));
+                if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+                    endGameCoroutine = StartCoroutine(DelayedEndGame(2.0f));
+                }
             } else {
                 RestartTime();
-                nextRoundCoroutine = StartCoroutine(DelayedNextRound(2.0f));
+                if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+                    nextRoundCoroutine = StartCoroutine(DelayedNextRound(2.0f));
+                }
             }
         } else {
             // Wrong Guess — deactivate the symbol object, reset Guessed flag
@@ -302,12 +517,21 @@ public class PuppetGame : MonoBehaviour, IGames
             }
 
             FailCounter++;
+
+            if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+                SaveStateToRoomProperties(true);
+            }
+
             Debug.Log($"[PuppetGame] You answered wrong! Answer is {AnswerSymbolId} but you answered {GuessSymbolID}. Fails: {FailCounter}/{MaxFailAttempts}");
             if (FailCounter >= MaxFailAttempts) {
-                endGameCoroutine = StartCoroutine(DelayedEndGame(2.0f));
+                if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+                    endGameCoroutine = StartCoroutine(DelayedEndGame(2.0f));
+                }
             } else {
                 RestartTime();
-                nextRoundCoroutine = StartCoroutine(DelayedNextRound(2.0f));
+                if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) {
+                    nextRoundCoroutine = StartCoroutine(DelayedNextRound(2.0f));
+                }
             }
         }
     }

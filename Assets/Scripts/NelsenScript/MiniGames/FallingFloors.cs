@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
+using Photon.Pun;
 
 public class FallingFloors : MonoBehaviour, IGames
 {
@@ -35,6 +36,9 @@ public class FallingFloors : MonoBehaviour, IGames
     [SerializeField] private UnityEvent OnGameStartEvent;
     [SerializeField] private UnityEvent OnGameWonEvent;
     [SerializeField] private UnityEvent OnGameLostEvent;
+
+    [Header("Arena Detection")]
+    [SerializeField] private Collider arenaCollider;
 
     private enum GameState { BetweenRound, RoundStart, GameEnd }
     private GameState currentState;
@@ -71,17 +75,9 @@ public class FallingFloors : MonoBehaviour, IGames
     {
         if (currentState != GameState.GameEnd && roundStart)
         {
-            if (IsBlindPlayerDead() || IsBlindPlayerDeaf())
+            if (!IsAnyPlayerInArena())
             {
-                if (audioSource != null && audioSource.isPlaying)
-                {
-                    audioSource.Stop();
-                }
-            }
-
-            if (AreAllPlayersDead())
-            {
-                Debug.Log("[FallingFloors] Both players are dead. Ending game.");
+                Debug.Log("[FallingFloors] No players left inside the arena. Ending game.");
                 currentState = GameState.GameEnd;
                 EndGame();
                 return;
@@ -90,17 +86,25 @@ public class FallingFloors : MonoBehaviour, IGames
 
         if (roundStart)
         {
-            currentTime += Time.deltaTime;
-            if (currentTime >= currentStateTime)
+            if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient)
             {
-                currentTime = 0f;
-                TransitionState();
+                currentTime += Time.deltaTime;
+                if (currentTime >= currentStateTime)
+                {
+                    currentTime = 0f;
+                    TransitionState();
+                }
+            }
+            else
+            {
+                currentTime += Time.deltaTime;
             }
         }
     }
 
     private void TransitionState()
     {
+        PhotonView pv = GetComponent<PhotonView>();
         switch (currentState)
         {
             case GameState.BetweenRound:
@@ -108,54 +112,188 @@ public class FallingFloors : MonoBehaviour, IGames
                 currentRound++;
                 if (currentRound > totalRounds)
                 {
-                    currentState = GameState.GameEnd;
-                    currentStateTime = 0f;
-                    EndGame();
+                    if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0)
+                    {
+                        pv.RPC("SyncTransitionRPC", RpcTarget.All, currentRound, (int)GameState.GameEnd, currentSymbol);
+                    }
+                    else if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+                    {
+                        FirstPersonController localPlayer = FindLocalPlayer();
+                        if (localPlayer != null)
+                        {
+                            localPlayer.RouteFallingFloorsSyncTransition(currentRound, (int)GameState.GameEnd, currentSymbol);
+                        }
+                    }
+                    else
+                    {
+                        currentState = GameState.GameEnd;
+                        currentStateTime = 0f;
+                        EndGameLocal();
+                    }
                 }
                 else
                 {
                     // Generate new symbol and play sequence
                     GenerateRandomPlatformsSymbol();
                     
-                    // Reset platforms so players can walk on them
-                    ResetPlatform();
-
-                    // Temporarily stop the round timer countdown while the audio is playing
-                    roundStart = false;
-                    currentTime = 0f;
-
-                    if (audioCoroutine != null)
+                    if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0)
                     {
-                        StopCoroutine(audioCoroutine);
+                        pv.RPC("SyncTransitionRPC", RpcTarget.All, currentRound, (int)GameState.RoundStart, currentSymbol);
                     }
-                    audioCoroutine = StartCoroutine(PlaySymbolSequenceAndStartRound(currentSymbol));
+                    else if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+                    {
+                        FirstPersonController localPlayer = FindLocalPlayer();
+                        if (localPlayer != null)
+                        {
+                            localPlayer.RouteFallingFloorsSyncTransition(currentRound, (int)GameState.RoundStart, currentSymbol);
+                        }
+                    }
+                    else
+                    {
+                        // Reset platforms so players can walk on them
+                        ResetPlatform();
+
+                        // Temporarily stop the round timer countdown while the audio is playing
+                        roundStart = false;
+                        currentTime = 0f;
+
+                        if (audioCoroutine != null)
+                        {
+                            StopCoroutine(audioCoroutine);
+                        }
+                        audioCoroutine = StartCoroutine(PlaySymbolSequenceAndStartRound(currentSymbol));
+                    }
                 }
                 break;
 
             case GameState.RoundStart:
-                // Round timer ended, drop incorrect platforms
-                DropPlatform(currentSymbol);
-
-                if (clockCoroutine != null)
+                if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0)
                 {
-                    StopCoroutine(clockCoroutine);
-                    clockCoroutine = null;
+                    pv.RPC("SyncTransitionRPC", RpcTarget.All, currentRound, (int)GameState.BetweenRound, currentSymbol);
                 }
-
-                if (audioSource != null)
+                else if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
                 {
-                    audioSource.Stop(); // Stop ticking audio
+                    FirstPersonController localPlayer = FindLocalPlayer();
+                    if (localPlayer != null)
+                    {
+                        localPlayer.RouteFallingFloorsSyncTransition(currentRound, (int)GameState.BetweenRound, currentSymbol);
+                    }
                 }
-                
-                // Go to BetweenRound wait state
-                currentState = GameState.BetweenRound;
-                currentStateTime = timeBetweenRounds;
+                else
+                {
+                    // Round timer ended, drop incorrect platforms
+                    DropPlatform(currentSymbol);
+
+                    if (clockCoroutine != null)
+                    {
+                        StopCoroutine(clockCoroutine);
+                        clockCoroutine = null;
+                    }
+
+                    if (audioSource != null)
+                    {
+                        audioSource.Stop(); // Stop ticking audio
+                    }
+                    
+                    // Go to BetweenRound wait state
+                    currentState = GameState.BetweenRound;
+                    currentStateTime = timeBetweenRounds;
+                    currentTime = 0f;
+                    roundStart = true;
+                }
                 break;
 
             case GameState.GameEnd:
-                EndGame();
+                if (PhotonNetwork.IsConnected && pv != null && pv.ViewID > 0)
+                {
+                    pv.RPC("SyncTransitionRPC", RpcTarget.All, currentRound, (int)GameState.GameEnd, currentSymbol);
+                }
+                else if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+                {
+                    FirstPersonController localPlayer = FindLocalPlayer();
+                    if (localPlayer != null)
+                    {
+                        localPlayer.RouteFallingFloorsSyncTransition(currentRound, (int)GameState.GameEnd, currentSymbol);
+                    }
+                }
+                else
+                {
+                    EndGameLocal();
+                }
                 break;
         }
+    }
+
+    [PunRPC]
+    private void SyncTransitionRPC(int round, int nextStateVal, int[] symbols)
+    {
+        SyncTransitionLocal(round, nextStateVal, symbols);
+    }
+
+    public void SyncTransitionLocal(int round, int nextStateVal, int[] symbols)
+    {
+        currentRound = round;
+        GameState nextState = (GameState)nextStateVal;
+        if (symbols != null && currentSymbol != null && symbols.Length == currentSymbol.Length)
+        {
+            System.Array.Copy(symbols, currentSymbol, symbols.Length);
+        }
+
+        if (nextState == GameState.RoundStart)
+        {
+            // Reset platforms so players can walk on them
+            ResetPlatform();
+
+            // Temporarily stop the round timer countdown while the audio is playing
+            roundStart = false;
+            currentTime = 0f;
+
+            if (audioCoroutine != null)
+            {
+                StopCoroutine(audioCoroutine);
+            }
+            audioCoroutine = StartCoroutine(PlaySymbolSequenceAndStartRound(currentSymbol));
+        }
+        else if (nextState == GameState.BetweenRound)
+        {
+            // Round timer ended, drop incorrect platforms
+            DropPlatform(currentSymbol);
+
+            if (clockCoroutine != null)
+            {
+                StopCoroutine(clockCoroutine);
+                clockCoroutine = null;
+            }
+
+            if (audioSource != null)
+            {
+                audioSource.Stop(); // Stop ticking audio
+            }
+            
+            // Go to BetweenRound wait state
+            currentState = GameState.BetweenRound;
+            currentStateTime = timeBetweenRounds;
+            currentTime = 0f;
+            roundStart = true;
+        }
+        else if (nextState == GameState.GameEnd)
+        {
+            currentState = GameState.GameEnd;
+            EndGameLocal();
+        }
+    }
+
+    private FirstPersonController FindLocalPlayer()
+    {
+        var controllers = FindObjectsOfType<FirstPersonController>();
+        foreach (var c in controllers)
+        {
+            if (c.IsLocalPlayer)
+            {
+                return c;
+            }
+        }
+        return null;
     }
 
     private float GetRoundDuration(int round)
@@ -168,10 +306,37 @@ public class FallingFloors : MonoBehaviour, IGames
     #region IGames Implementation
     public void StartGame()
     {
-        RestartGame();
-        if(audioSource == null){
-            audioSource = DisabilityManager.Instance.BlindPlayer.GetComponent<AudioSource>();
+        PhotonView pv = GetComponent<PhotonView>();
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            if (pv != null && pv.ViewID > 0)
+            {
+                pv.RPC("StartGameRPC", RpcTarget.All);
+            }
+            else
+            {
+                FirstPersonController localPlayer = FindLocalPlayer();
+                if (localPlayer != null)
+                {
+                    localPlayer.RouteFallingFloorsStartGame();
+                }
+            }
         }
+        else
+        {
+            StartGameLocal();
+        }
+    }
+
+    [PunRPC]
+    private void StartGameRPC()
+    {
+        StartGameLocal();
+    }
+
+    public void StartGameLocal()
+    {
+        RestartGameLocal();
 
         roundStart = true;
         currentState = GameState.BetweenRound;
@@ -184,25 +349,45 @@ public class FallingFloors : MonoBehaviour, IGames
 
     public void RestartGame()
     {
+        PhotonView pv = GetComponent<PhotonView>();
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            if (pv != null && pv.ViewID > 0)
+            {
+                pv.RPC("RestartGameRPC", RpcTarget.All);
+            }
+            else
+            {
+                FirstPersonController localPlayer = FindLocalPlayer();
+                if (localPlayer != null)
+                {
+                    localPlayer.RouteFallingFloorsRestartGame();
+                }
+            }
+        }
+        else
+        {
+            RestartGameLocal();
+        }
+    }
+
+    [PunRPC]
+    private void RestartGameRPC()
+    {
+        RestartGameLocal();
+    }
+
+    public void RestartGameLocal()
+    {
         currentRound = 0;
         currentTime = 0f;
         roundStart = false;
         currentState = GameState.BetweenRound;
         
-        // Make sure dictionary is initialized (in case mapping list was changed in Inspector)
         InitializeDictionary();
         ResetPlatform();
 
-        if (audioCoroutine != null)
-        {
-            StopCoroutine(audioCoroutine);
-            audioCoroutine = null;
-        }
-        if (clockCoroutine != null)
-        {
-            StopCoroutine(clockCoroutine);
-            clockCoroutine = null;
-        }
+        StopGameCoroutines();
         if (audioSource != null)
         {
             audioSource.Stop();
@@ -212,17 +397,38 @@ public class FallingFloors : MonoBehaviour, IGames
 
     public void EndGame()
     {
+        PhotonView pv = GetComponent<PhotonView>();
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            if (pv != null && pv.ViewID > 0)
+            {
+                pv.RPC("EndGameRPC", RpcTarget.All);
+            }
+            else
+            {
+                FirstPersonController localPlayer = FindLocalPlayer();
+                if (localPlayer != null)
+                {
+                    localPlayer.RouteFallingFloorsEndGame();
+                }
+            }
+        }
+        else
+        {
+            EndGameLocal();
+        }
+    }
+
+    [PunRPC]
+    private void EndGameRPC()
+    {
+        EndGameLocal();
+    }
+
+    public void EndGameLocal()
+    {
         roundStart = false;
-        if (audioCoroutine != null)
-        {
-            StopCoroutine(audioCoroutine);
-            audioCoroutine = null;
-        }
-        if (clockCoroutine != null)
-        {
-            StopCoroutine(clockCoroutine);
-            clockCoroutine = null;
-        }
+        StopGameCoroutines();
         if (audioSource != null)
         {
             audioSource.Stop();
@@ -235,6 +441,20 @@ public class FallingFloors : MonoBehaviour, IGames
         else
         {
             GameLost();
+        }
+    }
+
+    private void StopGameCoroutines()
+    {
+        if (audioCoroutine != null)
+        {
+            StopCoroutine(audioCoroutine);
+            audioCoroutine = null;
+        }
+        if (clockCoroutine != null)
+        {
+            StopCoroutine(clockCoroutine);
+            clockCoroutine = null;
         }
     }
     #endregion
@@ -268,64 +488,35 @@ public class FallingFloors : MonoBehaviour, IGames
         OnGameWonEvent?.Invoke();
     }
 
-    private bool IsBlindPlayerDead()
-    {
-        if (DisabilityManager.Instance != null && DisabilityManager.Instance.BlindPlayer != null)
-        {
-            FirstPersonController blindCtrl = DisabilityManager.Instance.BlindPlayer.GetComponent<FirstPersonController>();
-            return blindCtrl != null && blindCtrl.IsDead;
-        }
-        return false;
-    }
 
-    private bool IsBlindPlayerDeaf()
-    {
-        if (DisabilityManager.Instance != null && DisabilityManager.Instance.BlindPlayer != null)
-        {
-            PlayerDisability pd = DisabilityManager.Instance.BlindPlayer.GetComponent<PlayerDisability>();
-            return pd != null && pd.IsDeafActive;
-        }
-        return false;
-    }
 
-    private bool AreAllPlayersDead()
+    private bool IsAnyPlayerInArena()
     {
-        if (DisabilityManager.Instance != null)
-        {
-            GameObject blind = DisabilityManager.Instance.BlindPlayer;
-            GameObject deaf = DisabilityManager.Instance.DeafPlayer;
-
-            if (blind != null && deaf != null)
-            {
-                FirstPersonController blindCtrl = blind.GetComponent<FirstPersonController>();
-                FirstPersonController deafCtrl = deaf.GetComponent<FirstPersonController>();
-                bool blindDead = blindCtrl != null && blindCtrl.IsDead;
-                bool deafDead = deafCtrl != null && deafCtrl.IsDead;
-                return blindDead && deafDead;
-            }
-            else if (blind != null)
-            {
-                FirstPersonController blindCtrl = blind.GetComponent<FirstPersonController>();
-                return blindCtrl != null && blindCtrl.IsDead;
-            }
-            else if (deaf != null)
-            {
-                FirstPersonController deafCtrl = deaf.GetComponent<FirstPersonController>();
-                return deafCtrl != null && deafCtrl.IsDead;
-            }
-        }
+        if (arenaCollider == null) return true;
 
         FirstPersonController[] players = FindObjectsOfType<FirstPersonController>();
-        if (players == null || players.Length == 0) return false;
-
         foreach (var player in players)
         {
             if (player != null && !player.IsDead)
             {
-                return false;
+                Collider playerCol = player.GetComponent<Collider>();
+                if (playerCol != null)
+                {
+                    if (arenaCollider.bounds.Intersects(playerCol.bounds))
+                    {
+                        return true;
+                    }
+                }
+                else
+                {
+                    if (arenaCollider.bounds.Contains(player.transform.position))
+                    {
+                        return true;
+                    }
+                }
             }
         }
-        return true;
+        return false;
     }
 
     #region Platforms
@@ -403,12 +594,6 @@ public class FallingFloors : MonoBehaviour, IGames
 
         foreach (int s in symbol)
         {
-            if (IsBlindPlayerDead() || IsBlindPlayerDeaf())
-            {
-                audioSource.Stop();
-                yield break;
-            }
-
             int clipIndex = s - 1; // Translate 1,2,3 to 0,1,2
             if (clipIndex >= 0 && clipIndex < symbolClips.Length && symbolClips[clipIndex] != null)
             {
@@ -417,13 +602,6 @@ public class FallingFloors : MonoBehaviour, IGames
                 
                 while (audioSource.isPlaying)
                 {
-                    if (IsBlindPlayerDead() || IsBlindPlayerDeaf())
-                    {
-                        audioSource.Stop();
-                        audioSource.clip = null;
-                        audioSource.loop = originalLoop;
-                        yield break;
-                    }
                     yield return null;
                 }
 
@@ -458,12 +636,6 @@ public class FallingFloors : MonoBehaviour, IGames
 
         while (currentState == GameState.RoundStart && roundStart)
         {
-            if (IsBlindPlayerDead() || IsBlindPlayerDeaf())
-            {
-                audioSource.Stop();
-                yield break;
-            }
-
             float timeLeft = currentStateTime - currentTime;
             if (timeLeft <= 0.1f) break;
 

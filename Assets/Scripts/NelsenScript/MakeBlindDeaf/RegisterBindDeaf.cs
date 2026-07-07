@@ -6,31 +6,34 @@ public class RegisterBindDeaf : MonoBehaviour
 {
     public enum Disability
     {
-        Blind, Deaf
+        Blind,
+        Deaf,
+        Both
     }
 
     public Disability disability;
 
-    private GameObject Player;
-
-    void OnTriggerEnter(Collider other){
+    void OnTriggerEnter(Collider other)
+    {
         PlayerDisability pd = other.GetComponentInParent<PlayerDisability>();
-        if(pd != null){
-            Player = pd.gameObject;
-            RegisterDisability();
-        }
-    }
+        if (pd != null)
+        {
+            // Register disability on the player based on the trigger's setting
+            if (disability == Disability.Blind)
+            {
+                pd.RegisterDisability(PlayerDisability.DisabilityType.Blind);
+            }
+            else if (disability == Disability.Deaf)
+            {
+                pd.RegisterDisability(PlayerDisability.DisabilityType.Deaf);
+            }
+            else if (disability == Disability.Both)
+            {
+                pd.RegisterDisability(PlayerDisability.DisabilityType.Both);
+            }
 
-    public void RegisterDisability(){
-        if (Player == null) return;
-
-        if(disability == Disability.Blind){
-            DisabilityManager.Instance.RegisterBlind(Player);
-            Debug.Log($"[RegisterBindDeaf] Registered {Player.name} as BLIND");
-        }
-        else{
-            DisabilityManager.Instance.RegisterDeaf(Player);
-            Debug.Log($"[RegisterBindDeaf] Registered {Player.name} as DEAF");
+            // Immediately activate the disability on the player
+            pd.EnableDisability();
         }
     }
 }

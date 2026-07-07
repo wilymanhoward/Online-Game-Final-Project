@@ -69,6 +69,8 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
 
     private string pendingRoomToJoin = "";
     private bool isStartingGame = false;
+    private Coroutine cutsceneCoroutine;
+    private bool isCutscenePlaying = false;
 
     private void Start()
     {
@@ -433,7 +435,19 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
                         inputRoomCodeStone.SetActive(false);
                     }
                     
-                    StartCoroutine(PlayCutsceneAndTransition());
+                    cutsceneCoroutine = StartCoroutine(PlayCutsceneAndTransition());
+                }
+            }
+        }
+
+        if (propertiesThatChanged.ContainsKey("SkipCutscene"))
+        {
+            object val = propertiesThatChanged["SkipCutscene"];
+            if (val != null && (bool)val)
+            {
+                if (isCutscenePlaying)
+                {
+                    SkipCutsceneLocal();
                 }
             }
         }
@@ -441,6 +455,7 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
 
     private IEnumerator PlayCutsceneAndTransition()
     {
+        isCutscenePlaying = true;
         Debug.Log("[Transition] Started PlayCutsceneAndTransition");
 
         // Ensure black screen image color has full alpha if an Image component exists
@@ -533,6 +548,7 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
 
         // 5. Instantly load the next scene without any extra delay
         Debug.Log("[Transition] Attempting to load next scene: Puzzle1");
+        isCutscenePlaying = false;
         if (PhotonNetwork.IsMasterClient)
         {
             Debug.Log("[Transition] Calling PhotonNetwork.LoadLevel(\"Puzzle1\")...");
@@ -541,6 +557,74 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         else
         {
             Debug.LogWarning("[Transition] Not MasterClient, waiting for MasterClient to load level.");
+        }
+    }
+
+    private void SkipCutsceneNetworked()
+    {
+        if (PhotonNetwork.InRoom)
+        {
+            ExitGames.Client.Photon.Hashtable props = new ExitGames.Client.Photon.Hashtable();
+            props["SkipCutscene"] = true;
+            PhotonNetwork.CurrentRoom.SetCustomProperties(props);
+        }
+        else
+        {
+            SkipCutsceneLocal();
+        }
+    }
+
+    private void SkipCutsceneLocal()
+    {
+        Debug.Log("[Transition] Skipping cutscene...");
+
+        if (cutsceneCoroutine != null)
+        {
+            StopCoroutine(cutsceneCoroutine);
+            cutsceneCoroutine = null;
+        }
+
+        isCutscenePlaying = false;
+
+        if (startTimeline != null)
+        {
+            startTimeline.Stop();
+        }
+
+        if (bgmSource != null) bgmSource.Stop();
+
+        if (menuCamera != null) menuCamera.SetActive(false);
+        if (cutsceneCamera != null) cutsceneCamera.SetActive(true);
+
+        if (mainCanvas != null)
+        {
+            Canvas canvasComp = mainCanvas.GetComponent<Canvas>();
+            if (canvasComp != null)
+            {
+                canvasComp.enabled = false;
+            }
+            else
+            {
+                mainCanvas.SetActive(false);
+            }
+        }
+
+        if (blackScreenObject != null)
+        {
+            blackScreenObject.SetActive(true);
+            CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
+            if (cg == null) cg = blackScreenObject.AddComponent<CanvasGroup>();
+            cg.alpha = 1f;
+        }
+
+        if (PhotonNetwork.IsMasterClient)
+        {
+            Debug.Log("[Transition] Skip: MasterClient loading next scene: Puzzle1");
+            PhotonNetwork.LoadLevel("Puzzle1");
+        }
+        else
+        {
+            Debug.Log("[Transition] Skip: Waiting for MasterClient to load level.");
         }
     }
 
@@ -751,6 +835,12 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         {
             PlayClickSound();
             GoToPreviousMenu();
+        }
+
+        // Handle skip cutscene with Tab key
+        if (isCutscenePlaying && Input.GetKeyDown(KeyCode.Tab))
+        {
+            SkipCutsceneNetworked();
         }
     }
 }

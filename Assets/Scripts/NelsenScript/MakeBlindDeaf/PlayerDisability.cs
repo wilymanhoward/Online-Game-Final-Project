@@ -8,6 +8,15 @@ public class PlayerDisability : MonoBehaviour
     [Tooltip("Assign any UI panel / Image here to show as the blindness indicator.")]
     public GameObject BlindOverlay;
 
+    [Header("Blindness Settings")]
+    [Tooltip("Opacity of the blindness effect (0 = invisible, 1 = fully opaque).")]
+    [Range(0f, 1f)]
+    public float blindnessOpacity = 1.0f;
+
+    [Tooltip("How many bandage wraps are shown on screen (1 to 7). Lower values leave larger visible gaps.")]
+    [Range(1, 7)]
+    public int bandageCount = 4;
+
     // Deaf overlay
     public GameObject DeafOverlay;
 
@@ -18,6 +27,10 @@ public class PlayerDisability : MonoBehaviour
     [Tooltip("How much to reduce volume (0–1) while deaf. 0.35 = noticeably quieter but still audible.")]
     [Range(0f, 1f)]
     public float deafVolumeMultiplier = 0.35f;
+
+    [Tooltip("How much to distort audio (0-1) while deaf. 0.85 = highly distorted/muffled.")]
+    [Range(0f, 1f)]
+    public float deafDistortionLevel = 0.85f;
 
     [Tooltip("Seconds to fade INTO the muffled state.")]
     public float deafFadeInDuration  = 0.6f;
@@ -30,6 +43,7 @@ public class PlayerDisability : MonoBehaviour
 
     // ── Deaf audio internals ──────────────────────────────────────────────────
     private AudioLowPassFilter _deafFilter;  // attached to the AudioListener
+    private AudioDistortionFilter _distortionFilter; // attached to the AudioListener
     private Coroutine          _deafCoroutine;
     private const float        NormalCutoff = 22000f; // Hz – effectively no filter
     private const float        NormalVolume = 1f;
@@ -53,8 +67,13 @@ public class PlayerDisability : MonoBehaviour
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    private FirstPersonController playerController;
+
     void Start()
     {
+        playerController = GetComponent<FirstPersonController>();
+        if (playerController == null) playerController = GetComponentInParent<FirstPersonController>();
+
         // Grab (or create) the AudioLowPassFilter on the scene's AudioListener
         AudioListener listener = FindObjectOfType<AudioListener>();
         if (listener != null)
@@ -66,6 +85,14 @@ public class PlayerDisability : MonoBehaviour
             // Start at full normal hearing
             _deafFilter.cutoffFrequency = NormalCutoff;
             _deafFilter.enabled         = false;
+
+            // Grab (or create) the AudioDistortionFilter
+            _distortionFilter = listener.GetComponent<AudioDistortionFilter>();
+            if (_distortionFilter == null)
+                _distortionFilter = listener.gameObject.AddComponent<AudioDistortionFilter>();
+
+            _distortionFilter.distortionLevel = 0f;
+            _distortionFilter.enabled         = false;
         }
         else
         {
@@ -82,6 +109,84 @@ public class PlayerDisability : MonoBehaviour
 
     // ── Public API ────────────────────────────────────────────────────────────
 
+    public enum DisabilityType { None, Blind, Deaf, Both }
+    
+    [Header("Disability Registration State")]
+    public DisabilityType registeredDisability = DisabilityType.None;
+
+    public static GameObject GetBlindPlayer()
+    {
+        PlayerDisability[] disabilities = FindObjectsOfType<PlayerDisability>();
+        foreach (var pd in disabilities)
+        {
+            if (pd.registeredDisability == DisabilityType.Blind || pd.registeredDisability == DisabilityType.Both)
+            {
+                return pd.gameObject;
+            }
+        }
+        return null;
+    }
+
+    public static GameObject GetDeafPlayer()
+    {
+        PlayerDisability[] disabilities = FindObjectsOfType<PlayerDisability>();
+        foreach (var pd in disabilities)
+        {
+            if (pd.registeredDisability == DisabilityType.Deaf || pd.registeredDisability == DisabilityType.Both)
+            {
+                return pd.gameObject;
+            }
+        }
+        return null;
+    }
+
+    public void RegisterDisability(DisabilityType type)
+    {
+        // Role-switching helper: Ensure no other player holds the same disability we are trying to register
+        if (type != DisabilityType.None)
+        {
+            PlayerDisability[] allDisabilities = FindObjectsOfType<PlayerDisability>();
+            foreach (var pd in allDisabilities)
+            {
+                if (pd != this && pd.registeredDisability == type)
+                {
+                    pd.RegisterDisability(DisabilityType.None);
+                    pd.DisableDisability();
+                }
+            }
+        }
+
+        registeredDisability = type;
+        Debug.Log($"[PlayerDisability] Registered as {type} on {name}");
+    }
+
+    public void EnableDisability()
+    {
+        if (registeredDisability == DisabilityType.Blind)
+        {
+            SetBlind(true);
+            SetDeaf(false);
+        }
+        else if (registeredDisability == DisabilityType.Deaf)
+        {
+            SetDeaf(true);
+            SetBlind(false);
+        }
+        else if (registeredDisability == DisabilityType.Both)
+        {
+            SetBlind(true);
+            SetDeaf(true);
+        }
+    }
+
+    public void DisableDisability()
+    {
+        SetBlind(false);
+        SetDeaf(false);
+    }
+
+
+
     /// <summary>
     /// Enable or disable the blindness effect.
     /// Toggles the BlindOverlay UI panel and plays the bandage-wrap animation.
@@ -90,9 +195,29 @@ public class PlayerDisability : MonoBehaviour
     {
         IsBlindActive = isBlind;
 
+        // ONLY apply visual overlays and screen animations for the local player client!
+        if (playerController != null && !playerController.IsLocalPlayer) return;
+
         // Toggle the blind UI indicator
         if (BlindOverlay != null)
+        {
             BlindOverlay.SetActive(isBlind);
+            var canvasGroup = BlindOverlay.GetComponent<CanvasGroup>();
+            if (canvasGroup != null)
+            {
+                canvasGroup.alpha = blindnessOpacity;
+            }
+            else
+            {
+                var img = BlindOverlay.GetComponent<UnityEngine.UI.Image>();
+                if (img != null)
+                {
+                    Color c = img.color;
+                    c.a = blindnessOpacity;
+                    img.color = c;
+                }
+            }
+        }
 
         if (bandageCanvasObj == null)
         {
@@ -118,6 +243,9 @@ public class PlayerDisability : MonoBehaviour
     public void SetDeaf(bool isDeaf)
     {
         IsDeafActive = isDeaf;
+
+        // ONLY muffle audio and toggle UI overlays for the local player client!
+        if (playerController != null && !playerController.IsLocalPlayer) return;
 
         // Toggle the UI overlay
         if (DeafOverlay != null)
@@ -226,8 +354,10 @@ public class PlayerDisability : MonoBehaviour
             new BandageConfig { name = "A7", position = new Vector2(0f,  -90f), size = new Vector2(3400f, 130f), rotation =  16f, slideDirection = -1f }
         };
 
-        foreach (var cfg in configs)
+        int countToCreate = Mathf.Clamp(bandageCount, 0, configs.Count);
+        for (int i = 0; i < countToCreate; i++)
         {
+            var cfg = configs[i];
             float   rad      = cfg.rotation * Mathf.Deg2Rad;
             Vector2 dir      = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
             Vector2 offset   = dir * (3600f * cfg.slideDirection);
@@ -261,7 +391,7 @@ public class PlayerDisability : MonoBehaviour
 
         // Layer 1: Dark sandy shadow/outline
         var bgImage = stripObj.AddComponent<UnityEngine.UI.Image>();
-        bgImage.color = new Color(0.42f, 0.35f, 0.28f, 0.95f);
+        bgImage.color = new Color(0.42f, 0.35f, 0.28f, 0.95f * blindnessOpacity);
 
         // Layer 2: Main bandage wrap (Beige)
         GameObject mainObj  = new GameObject("MainWrap");
@@ -271,7 +401,7 @@ public class PlayerDisability : MonoBehaviour
         rectMain.anchorMax  = Vector2.one;
         rectMain.sizeDelta  = new Vector2(0f, -12f);
         var mainImage       = mainObj.AddComponent<UnityEngine.UI.Image>();
-        mainImage.color     = new Color(0.84f, 0.77f, 0.68f, 1f);
+        mainImage.color     = new Color(0.84f, 0.77f, 0.68f, 1f * blindnessOpacity);
 
         // Layer 3: Highlight fold (Lighter cream)
         GameObject highlightObj    = new GameObject("HighlightFold");
@@ -281,7 +411,7 @@ public class PlayerDisability : MonoBehaviour
         rectHighlight.anchorMax    = new Vector2(1f, 0.35f);
         rectHighlight.sizeDelta    = Vector2.zero;
         var highlightImage         = highlightObj.AddComponent<UnityEngine.UI.Image>();
-        highlightImage.color       = new Color(0.92f, 0.87f, 0.81f, 1f);
+        highlightImage.color       = new Color(0.92f, 0.87f, 0.81f, 1f * blindnessOpacity);
 
         // Layer 4: Overlapping secondary strip for textured look (Darker beige)
         GameObject overlapObj   = new GameObject("OverlapStrip");
@@ -292,7 +422,7 @@ public class PlayerDisability : MonoBehaviour
         rectOverlap.sizeDelta   = Vector2.zero;
         rectOverlap.localRotation = Quaternion.Euler(0f, 0f, -0.8f);
         var overlapImage        = overlapObj.AddComponent<UnityEngine.UI.Image>();
-        overlapImage.color      = new Color(0.80f, 0.73f, 0.64f, 1f);
+        overlapImage.color      = new Color(0.80f, 0.73f, 0.64f, 1f * blindnessOpacity);
 
         return rect;
     }
@@ -306,19 +436,25 @@ public class PlayerDisability : MonoBehaviour
     /// </summary>
     private IEnumerator FadeDeafAudio(bool goDeaf)
     {
-        if (_deafFilter == null) yield break;
+        if (_deafFilter == null || _distortionFilter == null) yield break;
 
         float duration = goDeaf ? deafFadeInDuration : deafFadeOutDuration;
         float elapsed  = 0f;
 
         float startCutoff = _deafFilter.cutoffFrequency;
         float startVolume = AudioListener.volume;
+        float startDistortion = _distortionFilter.distortionLevel;
 
         float targetCutoff = goDeaf ? deafLowPassCutoff  : NormalCutoff;
         float targetVolume = goDeaf ? deafVolumeMultiplier : NormalVolume;
+        float targetDistortion = goDeaf ? deafDistortionLevel : 0f;
 
-        // Enable the filter as soon as we start muffling
-        if (goDeaf) _deafFilter.enabled = true;
+        // Enable the filters as soon as we start muffling
+        if (goDeaf)
+        {
+            _deafFilter.enabled = true;
+            _distortionFilter.enabled = true;
+        }
 
         while (elapsed < duration)
         {
@@ -327,6 +463,7 @@ public class PlayerDisability : MonoBehaviour
 
             _deafFilter.cutoffFrequency = Mathf.Lerp(startCutoff, targetCutoff, easeT);
             AudioListener.volume        = Mathf.Lerp(startVolume,  targetVolume,  easeT);
+            _distortionFilter.distortionLevel = Mathf.Lerp(startDistortion, targetDistortion, easeT);
 
             yield return null;
         }
@@ -334,9 +471,14 @@ public class PlayerDisability : MonoBehaviour
         // Snap to finals
         _deafFilter.cutoffFrequency = targetCutoff;
         AudioListener.volume        = targetVolume;
+        _distortionFilter.distortionLevel = targetDistortion;
 
-        // Disable the filter component when not muffling (saves CPU)
-        if (!goDeaf) _deafFilter.enabled = false;
+        // Disable the filter components when not muffling (saves CPU)
+        if (!goDeaf)
+        {
+            _deafFilter.enabled = false;
+            _distortionFilter.enabled = false;
+        }
     }
 
     // ── Animation coroutine ───────────────────────────────────────────────────
