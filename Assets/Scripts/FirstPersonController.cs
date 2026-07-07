@@ -5,6 +5,8 @@ using Photon.Pun;
 [RequireComponent(typeof(PhotonView))]
 public class FirstPersonController : MonoBehaviourPun
 {
+    public static event System.Action<Vector3> OnLocalPlayerRespawn;
+
     [Header("Movement Settings")]
     public float moveSpeed = 5.0f; // Faster walking speed (5.0f)
     public float runSpeed = 8.5f;  // Faster running speed (8.5f)
@@ -19,7 +21,7 @@ public class FirstPersonController : MonoBehaviourPun
     [Header("Camera Settings")]
     [Tooltip("Target transform for the head. If null, the camera will be positioned relative to the player's transform.")]
     public Transform headJoint;
-    public Vector3 cameraOffset = new Vector3(0f, 0.15f, 0.15f); // Slightly forward to prevent clipping through the mummy's head/wrapping mesh
+    public Vector3 cameraOffset = new Vector3(0f, 0.12f, 0.25f); // Slightly lower and further forward to prevent clipping through the mummy's head/wrapping mesh
 
     private CharacterController controller;
     private Animator animator;
@@ -43,15 +45,8 @@ public class FirstPersonController : MonoBehaviourPun
     private Vector3 vaultTargetPos;
     private float vaultPeakHeight;
 
-    [Header("Throw Settings")]
-    public string throwablePrefabName = "ThrowableRock";
-    public float throwForce = 15f;
-    public int trajectoryResolution = 30;
-    public float trajectoryStepTime = 0.05f;
-
-    private LineRenderer trajectoryLine;
-    private GameObject landingMarker;
-    private bool isAiming = false;
+    [Header("Throw Settings (Managed by PlayerThrow)")]
+    [HideInInspector] public bool isAiming = false;
 
     private Transform leftLegJoint;
     private Transform rightLegJoint;
@@ -74,14 +69,23 @@ public class FirstPersonController : MonoBehaviourPun
     private Quaternion defaultLeftKneeRot;
     private Quaternion defaultRightKneeRot;
     private Quaternion defaultRightElbowRot;
+    private Quaternion defaultRightHandRot;
+
+    // Finger Joints & Default Rotations
+    private Transform finger01L, finger02L, finger03L;
+    private Transform index01L, index02L, index03L;
+    private Transform thumb01L, thumb02L, thumb03L;
+    private Quaternion defaultFinger01L, defaultFinger02L, defaultFinger03L;
+    private Quaternion defaultIndex01L, defaultIndex02L, defaultIndex03L;
+    private Quaternion defaultThumb01L, defaultThumb02L, defaultThumb03L;
 
     [Header("Throw Animation")]
     public float throwAnimDuration = 2.65f;
-    private float throwAnimTimer = 0f;
-    private bool isThrowingAnim = false;
-    private float throwExitBlend = 0f;
-    private float throwExitDuration = 0.2f;
-    private float originalNearClip = 0.3f;
+    [HideInInspector] public float throwAnimTimer = 0f;
+    [HideInInspector] public bool isThrowingAnim = false;
+    [HideInInspector] public float throwExitBlend = 0f;
+    public float throwExitDuration = 0.2f;
+    public float originalNearClip = 0.25f;
  
     [Header("Camera Aim Settings")]
     public float cameraAimBlendSpeed = 8f;
@@ -90,6 +94,92 @@ public class FirstPersonController : MonoBehaviourPun
     [Header("Checkpoint System")]
     public float deathYThreshold = -15f;
     private Vector3 activeCheckpointPosition;
+
+    [Header("Fall Damage Settings")]
+    [Tooltip("Maximum air time in seconds before fall becomes fatal upon landing.")]
+    public float fatalAirTimeThreshold = 3.0f;
+    private float airTimeCounter = 0f;
+
+    [Header("Moving Platform Settings")]
+    [SerializeField] private LayerMask platformLayer;
+    private Transform activePlatform;
+    private Vector3 localPlayerPos;
+
+    [Header("Input Settings")]
+    [SerializeField] private InputReader inputReader;
+    public InputReader InputReader => inputReader;
+
+    // Camera shake fields
+    private Vector3 cameraShakeOffset = Vector3.zero;
+
+    // Torch Settings
+    private bool isHoldingTorch = false;
+    public bool IsHoldingTorch => isHoldingTorch;
+    private float torchHoldWeight = 0f;
+    private GameObject leftHandTorchObj;
+
+    [Header("Torch Hold Pose Offset")]
+    public Vector3 torchHoldShoulderEuler = new Vector3(105f, 0f, -20f);
+    public float torchHoldElbowX = -45f;
+    public Vector3 torchHoldHandEuler = new Vector3(15f, 0f, 0f);
+
+    [Header("Torch Place Pose Offset")]
+    public Vector3 torchPlaceShoulderEuler = new Vector3(75f, 30f, -5f);
+    public float torchPlaceElbowX = -40f;
+    public Vector3 torchPlaceHandEuler = new Vector3(0f, 0f, 50f);
+
+    // Torch placing animation state
+    private bool isPlacingTorch = false;
+    public bool IsPlacingTorch => isPlacingTorch;
+    private float torchPlaceTimer = 0f;
+    private System.Action onTorchPlacedCallback = null;
+
+    // Death Spam Settings
+    [Header("Death Spam Settings")]
+    public int requiredClicksForRespawn = 5;
+    private bool isDead = false;
+    public bool IsDead => isDead;
+    private int clickCountToRespawn = 0;
+    private bool isLocalPlayer = true;
+    public bool IsLocalPlayer
+    {
+        get
+        {
+            if (PhotonNetwork.IsConnected)
+            {
+                if (gameObject.name == "Player1")
+                {
+                    return PhotonNetwork.IsMasterClient;
+                }
+                else if (gameObject.name == "Player2")
+                {
+                    return !PhotonNetwork.IsMasterClient;
+                }
+                else
+                {
+                    return photonView != null && photonView.IsMine;
+                }
+            }
+            else
+            {
+                // Offline fallback: only local if this instance has an active camera
+                var cam = GetComponentInChildren<Camera>(true);
+                if (cam != null)
+                {
+                    return cam.enabled && cam.gameObject.activeInHierarchy;
+                }
+                return isLocalPlayer;
+            }
+        }
+    }
+    public static FirstPersonController InteractingPlayer { get; set; }
+    public bool isParalyzed = false;
+    private GameObject deathOverlayObj;
+    private UnityEngine.UI.Text deathClicksText;
+    private UnityEngine.UI.Image deathProgressBarFill;
+ 
+    // Bandage Overlay Settings
+    // (Bandage/blindness fields moved to PlayerDisability)
 
     // Vault wall IK
     private Vector3 vaultWallContactPoint;
@@ -100,6 +190,12 @@ public class FirstPersonController : MonoBehaviourPun
     {
         controller = GetComponent<CharacterController>();
         animator = GetComponent<Animator>();
+
+        // Automatically ensure PlayerCheckpointHandler is attached
+        if (GetComponent<PlayerCheckpointHandler>() == null)
+        {
+            gameObject.AddComponent<PlayerCheckpointHandler>();
+        }
 
         // Ensure player has a kinematic Rigidbody so OnTriggerEnter is processed correctly by Unity's physics system
         Rigidbody rb = GetComponent<Rigidbody>();
@@ -153,9 +249,49 @@ public class FirstPersonController : MonoBehaviourPun
         if (leftKneeJoint) defaultLeftKneeRot = leftKneeJoint.localRotation;
         if (rightKneeJoint) defaultRightKneeRot = rightKneeJoint.localRotation;
         if (rightElbowJoint) defaultRightElbowRot = rightElbowJoint.localRotation;
+        if (rightHandJoint) defaultRightHandRot = rightHandJoint.localRotation;
+
+        // Cache left hand finger bones
+        finger01L = FindDeepChild(transform, "Finger_01_L");
+        finger02L = FindDeepChild(transform, "Finger_02_L");
+        finger03L = FindDeepChild(transform, "Finger_03_L");
+        index01L = FindDeepChild(transform, "IndexFinger_01_L");
+        index02L = FindDeepChild(transform, "IndexFinger_02_L");
+        index03L = FindDeepChild(transform, "IndexFinger_03_L");
+        thumb01L = FindDeepChild(transform, "Thumb_01_L");
+        thumb02L = FindDeepChild(transform, "Thumb_02_L");
+        thumb03L = FindDeepChild(transform, "Thumb_03_L");
+
+        if (finger01L) defaultFinger01L = finger01L.localRotation;
+        if (finger02L) defaultFinger02L = finger02L.localRotation;
+        if (finger03L) defaultFinger03L = finger03L.localRotation;
+        if (index01L) defaultIndex01L = index01L.localRotation;
+        if (index02L) defaultIndex02L = index02L.localRotation;
+        if (index03L) defaultIndex03L = index03L.localRotation;
+        if (thumb01L) defaultThumb01L = thumb01L.localRotation;
+        if (thumb02L) defaultThumb02L = thumb02L.localRotation;
+        if (thumb03L) defaultThumb03L = thumb03L.localRotation;
+
+        // Determine if this specific player instance is local based on name and Photon role
+        isLocalPlayer = true;
+        if (PhotonNetwork.IsConnected)
+        {
+            if (gameObject.name == "Player1")
+            {
+                isLocalPlayer = PhotonNetwork.IsMasterClient;
+            }
+            else if (gameObject.name == "Player2")
+            {
+                isLocalPlayer = !PhotonNetwork.IsMasterClient;
+            }
+            else
+            {
+                isLocalPlayer = photonView.IsMine;
+            }
+        }
 
         // If this is a remote player, we don't control it
-        if (PhotonNetwork.IsConnected && !photonView.IsMine)
+        if (!IsLocalPlayer)
         {
             // Disable CharacterController and FirstPersonController inputs
             if (controller != null) controller.enabled = false;
@@ -167,6 +303,10 @@ public class FirstPersonController : MonoBehaviourPun
             // Make sure the LineRenderer on this remote copy is disabled/destroyed so other players never see it
             var lr = GetComponent<LineRenderer>();
             if (lr != null) Destroy(lr);
+            
+            // Disable camera and listener on remote copy
+            var cam = GetComponentInChildren<Camera>(true);
+            if (cam != null) cam.gameObject.SetActive(false);
             
             return;
         }
@@ -204,16 +344,122 @@ public class FirstPersonController : MonoBehaviourPun
         // Initialize starting position as default checkpoint fallback
         activeCheckpointPosition = transform.position;
 
-        InitializeThrowVisuals();
+
+
+        if (leftHandJoint != null)
+        {
+            Transform torchTrans = leftHandJoint.Find("SM_Prop_Torch_05");
+            if (torchTrans != null)
+            {
+                leftHandTorchObj = torchTrans.gameObject;
+                leftHandTorchObj.SetActive(isHoldingTorch);
+            }
+        }
+
+        if (!PhotonNetwork.IsConnected || IsLocalPlayer)
+        {
+            CreateDeathUI();
+        }
+
+#if UNITY_EDITOR
+        if (inputReader == null)
+        {
+            string[] guids = UnityEditor.AssetDatabase.FindAssets("t:InputReader");
+            if (guids != null && guids.Length > 0)
+            {
+                string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
+                inputReader = UnityEditor.AssetDatabase.LoadAssetAtPath<InputReader>(path);
+            }
+        }
+#endif
+        if (inputReader == null)
+        {
+            InputReader[] readers = Resources.FindObjectsOfTypeAll<InputReader>();
+            if (readers != null && readers.Length > 0)
+            {
+                inputReader = readers[0];
+            }
+        }
+
+        // Initialize moving platform layer if not set
+        if (platformLayer == 0)
+        {
+            platformLayer = LayerMask.GetMask("Platform");
+        }
     }
 
     void Update()
     {
-        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
+
+        // Apply moving platform delta if standing on one
+        if (activePlatform != null)
+        {
+            Vector3 newWorldPos = activePlatform.TransformPoint(localPlayerPos);
+            Vector3 platformDelta = newWorldPos - transform.position;
+
+            // Only follow horizontal movement if in mid-air (prevent snapping/jumping snags)
+            if (!controller.isGrounded)
+            {
+                platformDelta.y = 0f;
+            }
+
+            if (platformDelta.sqrMagnitude > 0.0001f)
+            {
+                controller.Move(platformDelta);
+            }
+        }
+
+        bool disableMovement = isParalyzed || (inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptLook || inputReader.AreInputsDisabledExceptInteract));
+
+        // [TEST] B key toggles blind overlay via PlayerDisability
+        if (!disableMovement && Input.GetKeyDown(KeyCode.B) && !isDead)
+        {
+            PlayerDisability pd = GetComponent<PlayerDisability>();
+            if (pd != null) pd.SetBlind(!pd.IsBlindActive);
+        }
+
+        if (isDead)
+        {
+            airTimeCounter = 0f;
+            if (Input.GetMouseButtonDown(0))
+            {
+                clickCountToRespawn++;
+                TriggerCameraShake(0.12f, 0.15f); // slight shake feedback on click
+                UpdateDeathUI();
+                
+                if (clickCountToRespawn >= requiredClicksForRespawn)
+                {
+                    ExecuteRespawn();
+                }
+            }
+
+            // Lock camera movements during death, but keep positioning stable
+            if (playerCamera != null)
+            {
+                Vector3 activeOffset = cameraOffset;
+                if (headJoint != null)
+                {
+                    playerCamera.transform.position = headJoint.position + transform.TransformDirection(activeOffset) + cameraShakeOffset;
+                }
+                else
+                {
+                    playerCamera.transform.position = transform.position + new Vector3(activeOffset.x, 1.6f, activeOffset.z) + cameraShakeOffset;
+                }
+                playerCamera.transform.rotation = Quaternion.Euler(pitch, transform.eulerAngles.y, 0f);
+            }
+            return;
+        }
 
         // 1. Camera Look Rotation
-        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
-        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+        bool disableLook = isParalyzed || (inputReader != null && (inputReader.AreInputsDisabled || inputReader.AreInputsDisabledExceptInteract));
+        float mouseX = 0f;
+        float mouseY = 0f;
+        if (!disableLook)
+        {
+            mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
+            mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+        }
 
         // Rotate player body horizontally via mouse look
         transform.Rotate(Vector3.up * mouseX);
@@ -242,11 +488,11 @@ public class FirstPersonController : MonoBehaviourPun
 
             if (headJoint != null)
             {
-                playerCamera.transform.position = headJoint.position + transform.TransformDirection(activeOffset);
+                playerCamera.transform.position = headJoint.position + transform.TransformDirection(activeOffset) + cameraShakeOffset;
             }
             else
             {
-                playerCamera.transform.position = transform.position + new Vector3(activeOffset.x, 1.6f, activeOffset.z);
+                playerCamera.transform.position = transform.position + new Vector3(activeOffset.x, 1.6f, activeOffset.z) + cameraShakeOffset;
             }
             
             // Set rotation
@@ -269,15 +515,23 @@ public class FirstPersonController : MonoBehaviourPun
                 animator.SetBool("IsGrounded", false);
                 animator.SetBool("OnGround", false);
             }
+            airTimeCounter = 0f;
             return;
         }
 
         // 2. Player Movement
-        float moveHorizontal = Input.GetAxisRaw("Horizontal"); // Changed from GetAxis to GetAxisRaw for instant stopping response
-        float moveVertical = Input.GetAxisRaw("Vertical");     // Changed from GetAxis to GetAxisRaw for instant stopping response
+        float moveHorizontal = 0f;
+        float moveVertical = 0f;
+        bool isRunning = false;
 
-        // Determine if running (holding Shift and moving forward)
-        bool isRunning = (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && (Input.GetKey(KeyCode.W) || moveVertical > 0.1f);
+        if (!disableMovement)
+        {
+            moveHorizontal = Input.GetAxisRaw("Horizontal"); // Changed from GetAxis to GetAxisRaw for instant stopping response
+            moveVertical = Input.GetAxisRaw("Vertical");     // Changed from GetAxis to GetAxisRaw for instant stopping response
+            // Determine if running (holding Shift and moving forward)
+            isRunning = (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && (Input.GetKey(KeyCode.W) || moveVertical > 0.1f);
+        }
+
         float currentSpeed = isRunning ? runSpeed : moveSpeed;
 
         Vector3 inputDir = transform.right * moveHorizontal + transform.forward * moveVertical;
@@ -292,7 +546,7 @@ public class FirstPersonController : MonoBehaviourPun
                 verticalVelocity = -2f; 
             }
 
-            if (Input.GetButtonDown("Jump"))
+            if (!disableMovement && Input.GetButtonDown("Jump"))
             {
                 float obstacleHeight;
                 if (CheckVault(out vaultStartPos, out vaultTargetPos, out obstacleHeight))
@@ -315,8 +569,51 @@ public class FirstPersonController : MonoBehaviourPun
         // Combine horizontal movement and vertical velocity
         move.y = verticalVelocity;
 
+        bool wasGrounded = controller.isGrounded;
+
         // Move character controller
         controller.Move(move * Time.deltaTime);
+
+        // Update Moving Platform detection
+        RaycastHit platformHit;
+        Vector3 platformRayStart = transform.position + Vector3.up * 0.1f;
+        if (Physics.Raycast(platformRayStart, Vector3.down, out platformHit, 0.3f, platformLayer))
+        {
+            activePlatform = platformHit.transform;
+            localPlayerPos = activePlatform.InverseTransformPoint(transform.position);
+        }
+        else
+        {
+            activePlatform = null;
+        }
+
+        // Update air time counter and check for fatal landings
+        if (controller.isGrounded)
+        {
+            if (!wasGrounded)
+            {
+                // Player has just landed
+                if (airTimeCounter >= fatalAirTimeThreshold)
+                {
+                    // Debug.Log($"[FallDamage] Player landed after {airTimeCounter:F2} seconds of air time. Fatal threshold was {fatalAirTimeThreshold}s. Respawning.");
+                    Respawn();
+                }
+                else
+                {
+                    // Debug.Log($"[FallDamage] Player landed safely after {airTimeCounter:F2} seconds of air time.");
+                }
+                airTimeCounter = 0f;
+            }
+            else
+            {
+                airTimeCounter = 0f;
+            }
+        }
+        else
+        {
+            // Player is in the air (jumping, falling, etc.)
+            airTimeCounter += Time.deltaTime;
+        }
 
         // 3. Update Animator
         if (animator != null && animator.enabled)
@@ -334,10 +631,10 @@ public class FirstPersonController : MonoBehaviourPun
         // Check for falling below death boundaries
         if (transform.position.y < deathYThreshold)
         {
+            Debug.Log("Respawn triggered via falling check: Y=" + transform.position.y + ", deathYThreshold=" + deathYThreshold);
             Respawn();
         }
 
-        UpdateAimingAndTrajectory();
     }
 
     void LateUpdate()
@@ -524,6 +821,93 @@ public class FirstPersonController : MonoBehaviourPun
                 hipsJoint.localPosition = localPos;
             }
         }
+
+        // Handle torch placing animation updates
+        if (isPlacingTorch)
+        {
+            torchPlaceTimer -= Time.deltaTime;
+            if (torchPlaceTimer <= 0.3f)
+            {
+                if (onTorchPlacedCallback != null)
+                {
+                    onTorchPlacedCallback.Invoke();
+                    onTorchPlacedCallback = null;
+                }
+                if (isHoldingTorch)
+                {
+                    SetHoldingTorch(false);
+                }
+            }
+            if (torchPlaceTimer <= 0f)
+            {
+                isPlacingTorch = false;
+            }
+        }
+
+        // Smoothly blend the torch holding pose on the left arm joints in LateUpdate instead of Update
+        // to prevent the Unity Animator from overwriting the custom joint rotations.
+        if (isHoldingTorch)
+        {
+            torchHoldWeight = Mathf.MoveTowards(torchHoldWeight, 1f, Time.deltaTime * 5f);
+        }
+        else
+        {
+            torchHoldWeight = Mathf.MoveTowards(torchHoldWeight, 0f, Time.deltaTime * 5f);
+        }
+
+        if (torchHoldWeight > 0.01f)
+        {
+            float placeBlend = 0f;
+            if (isPlacingTorch && torchPlaceTimer > 0.3f)
+            {
+                placeBlend = Mathf.Clamp01((0.6f - torchPlaceTimer) / 0.3f);
+            }
+
+            float armX = Mathf.Lerp(torchHoldShoulderEuler.x, torchPlaceShoulderEuler.x, placeBlend);
+            float armY = Mathf.Lerp(torchHoldShoulderEuler.y, torchPlaceShoulderEuler.y, placeBlend);
+            float armZ = Mathf.Lerp(torchHoldShoulderEuler.z, torchPlaceShoulderEuler.z, placeBlend);
+
+            // Shift arm raise/lower to follow the camera's vertical look angle (pitch)
+            armX -= pitch;
+
+            float elbowX = Mathf.Lerp(torchHoldElbowX, torchPlaceElbowX, placeBlend);
+            float handX = Mathf.Lerp(torchHoldHandEuler.x, torchPlaceHandEuler.x, placeBlend);
+            float handY = Mathf.Lerp(torchHoldHandEuler.y, torchPlaceHandEuler.y, placeBlend);
+            float handZ = Mathf.Lerp(torchHoldHandEuler.z, torchPlaceHandEuler.z, placeBlend);
+
+            if (leftArmJoint != null)
+            {
+                // Bends left upper arm up-forward and slightly outward (more to the side)
+                // Also tilts up/down (using parent chest-space pitch) to follow camera movement
+                Quaternion targetArmRot = defaultLeftArmRot * Quaternion.Euler(armX, armY, armZ);
+                leftArmJoint.localRotation = Quaternion.Slerp(leftArmJoint.localRotation, targetArmRot, torchHoldWeight);
+            }
+            if (leftElbowJoint != null)
+            {
+                // Bends elbow forward
+                Quaternion targetElbowRot = defaultLeftElbowRot * Quaternion.Euler(elbowX, 0f, 0f);
+                leftElbowJoint.localRotation = Quaternion.Slerp(leftElbowJoint.localRotation, targetElbowRot, torchHoldWeight);
+            }
+            if (leftHandJoint != null)
+            {
+                // Holds torch upright and tilted forward/right (towards the center)
+                Quaternion targetHandRot = defaultLeftHandRot * Quaternion.Euler(handX, handY, handZ);
+                leftHandJoint.localRotation = Quaternion.Slerp(leftHandJoint.localRotation, targetHandRot, torchHoldWeight);
+            }
+
+            // Grip fingers around torch handle
+            if (finger01L != null) finger01L.localRotation = Quaternion.Slerp(finger01L.localRotation, defaultFinger01L * Quaternion.Euler(0f, 40f, 60f), torchHoldWeight);
+            if (finger02L != null) finger02L.localRotation = Quaternion.Slerp(finger02L.localRotation, defaultFinger02L * Quaternion.Euler(0f, 40f, 60f), torchHoldWeight);
+            if (finger03L != null) finger03L.localRotation = Quaternion.Slerp(finger03L.localRotation, defaultFinger03L * Quaternion.Euler(0f, 40f, 60f), torchHoldWeight);
+
+            if (index01L != null) index01L.localRotation = Quaternion.Slerp(index01L.localRotation, defaultIndex01L * Quaternion.Euler(0f, -40f, 40f), torchHoldWeight);
+            if (index02L != null) index02L.localRotation = Quaternion.Slerp(index02L.localRotation, defaultIndex02L * Quaternion.Euler(0f, -40f, 40f), torchHoldWeight);
+            if (index03L != null) index03L.localRotation = Quaternion.Slerp(index03L.localRotation, defaultIndex03L * Quaternion.Euler(0f, -40f, 40f), torchHoldWeight);
+
+            if (thumb01L != null) thumb01L.localRotation = Quaternion.Slerp(thumb01L.localRotation, defaultThumb01L * Quaternion.Euler(0f, -40f, 30f), torchHoldWeight);
+            if (thumb02L != null) thumb02L.localRotation = Quaternion.Slerp(thumb02L.localRotation, defaultThumb02L * Quaternion.Euler(0f, -40f, 30f), torchHoldWeight);
+            if (thumb03L != null) thumb03L.localRotation = Quaternion.Slerp(thumb03L.localRotation, defaultThumb03L * Quaternion.Euler(0f, -40f, 30f), torchHoldWeight);
+        }
     }
 
     // Animation Event receiver to prevent Unity console warnings
@@ -633,6 +1017,18 @@ public class FirstPersonController : MonoBehaviourPun
         if (leftElbowJoint) leftElbowJoint.localRotation = defaultLeftElbowRot;
         if (leftHandJoint) leftHandJoint.localRotation = defaultLeftHandRot;
         if (rightElbowJoint) rightElbowJoint.localRotation = defaultRightElbowRot;
+        if (rightHandJoint) rightHandJoint.localRotation = defaultRightHandRot;
+
+        // Reset finger joints
+        if (finger01L) finger01L.localRotation = defaultFinger01L;
+        if (finger02L) finger02L.localRotation = defaultFinger02L;
+        if (finger03L) finger03L.localRotation = defaultFinger03L;
+        if (index01L) index01L.localRotation = defaultIndex01L;
+        if (index02L) index02L.localRotation = defaultIndex02L;
+        if (index03L) index03L.localRotation = defaultIndex03L;
+        if (thumb01L) thumb01L.localRotation = defaultThumb01L;
+        if (thumb02L) thumb02L.localRotation = defaultThumb02L;
+        if (thumb03L) thumb03L.localRotation = defaultThumb03L;
     }
 
     private Transform FindDeepChild(Transform parent, string name)
@@ -646,325 +1042,62 @@ public class FirstPersonController : MonoBehaviourPun
         return null;
     }
 
-    private void InitializeThrowVisuals()
+
+
+    public void SetCheckpoint(Vector3 position)
     {
-        // Setup Trajectory LineRenderer dynamically if not present
-        trajectoryLine = GetComponent<LineRenderer>();
-        if (trajectoryLine == null)
-        {
-            trajectoryLine = gameObject.AddComponent<LineRenderer>();
-        }
-        trajectoryLine.startWidth = 0.05f;
-        trajectoryLine.endWidth = 0.05f;
-        trajectoryLine.numCornerVertices = 6;
-        trajectoryLine.numCapVertices = 6;
-        trajectoryLine.positionCount = 0;
-        trajectoryLine.enabled = false;
-
-        // Try to assign a default transparent shader
-        Shader spriteShader = Shader.Find("Sprites/Default");
-        if (spriteShader != null)
-        {
-            trajectoryLine.material = new Material(spriteShader);
-        }
-        trajectoryLine.startColor = new Color(0.3f, 0.3f, 0.3f, 0.95f); // Dark Grey
-        trajectoryLine.endColor = new Color(0.3f, 0.3f, 0.3f, 0.2f);
-
-        // Setup Landing Marker dynamically (a flat circle sprite on the ground)
-        landingMarker = new GameObject("ThrowLandingMarker");
-        landingMarker.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-        landingMarker.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
-
-        SpriteRenderer markerRenderer = landingMarker.AddComponent<SpriteRenderer>();
-        markerRenderer.sprite = CreateCircleSprite(32);
-        markerRenderer.color = new Color(0.3f, 0.3f, 0.3f, 0.8f); // Dark Grey transparent circle
-        landingMarker.SetActive(false);
+        activeCheckpointPosition = position;
+        Debug.Log("Checkpoint saved at: " + activeCheckpointPosition);
     }
 
-    private Sprite CreateCircleSprite(int radius)
+    public void ResetAirTime()
     {
-        int size = radius * 2;
-        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        Color[] colors = new Color[size * size];
-        
-        float r2 = radius * radius;
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float dx = x - radius + 0.5f;
-                float dy = y - radius + 0.5f;
-                float dist2 = dx * dx + dy * dy;
-                
-                int index = x + y * size;
-                if (dist2 <= r2)
-                {
-                    // Antialiased edge
-                    float dist = Mathf.Sqrt(dist2);
-                    float edge = radius - dist;
-                    float alpha = Mathf.Clamp01(edge);
-                    colors[index] = new Color(1f, 1f, 1f, alpha);
-                }
-                else
-                {
-                    colors[index] = Color.clear;
-                }
-            }
-        }
-        
-        texture.SetPixels(colors);
-        texture.Apply();
-        
-        return Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
-    }
+        // Only run for the local player client
+        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
 
-    private void UpdateAimingAndTrajectory()
-    {
-        // Aiming Logic (Hold Right-Click) - only active if not currently throwing
-        if (Input.GetMouseButton(1) && !isThrowingAnim && (!PhotonNetwork.IsConnected || photonView.IsMine))
-        {
-            isAiming = true;
-            if (trajectoryLine != null) trajectoryLine.enabled = true;
-
-            // Set Aiming bool parameter to true to transition to Goalie Throw (1) wind-up
-            if (animator != null && animator.enabled)
-            {
-                animator.SetBool("Aiming", true);
-            }
-
-            // Offset origin to the right (X = +0.3) and slightly down (Y = -0.2) from the camera POV to simulate throwing from the right side of the screen
-            Vector3 throwOrigin = playerCamera != null 
-                ? playerCamera.transform.position + playerCamera.transform.right * 0.3f + playerCamera.transform.forward * 0.5f - playerCamera.transform.up * 0.2f 
-                : transform.position + transform.right * 0.3f + Vector3.up * 1.3f;
-            Vector3 throwVelocity = playerCamera != null ? playerCamera.transform.forward * throwForce : transform.forward * throwForce;
-
-            Vector3[] points = new Vector3[trajectoryResolution];
-            int activePointsCount = 0;
-            Vector3 currentPos = throwOrigin;
-            Vector3 currentVelocity = throwVelocity;
-            points[0] = currentPos;
-            activePointsCount = 1;
-
-            bool hitSomething = false;
-            Vector3 hitPosition = Vector3.zero;
-            Vector3 hitNormal = Vector3.up;
-
-            for (int i = 1; i < trajectoryResolution; i++)
-            {
-                float t = trajectoryStepTime;
-                Vector3 nextPos = currentPos + currentVelocity * t + 0.5f * Physics.gravity * t * t;
-                Vector3 stepDirection = nextPos - currentPos;
-                float stepDistance = stepDirection.magnitude;
-
-                // Raycast to detect collisions along each segment
-                RaycastHit hit;
-                // Exclude the player from collision detection
-                int playerLayerMask = ~(1 << gameObject.layer);
-                if (Physics.Raycast(currentPos, stepDirection.normalized, out hit, stepDistance, playerLayerMask))
-                {
-                    points[i] = hit.point;
-                    activePointsCount++;
-                    hitSomething = true;
-                    hitPosition = hit.point;
-                    hitNormal = hit.normal;
-                    break;
-                }
-
-                points[i] = nextPos;
-                activePointsCount++;
-                currentPos = nextPos;
-                currentVelocity += Physics.gravity * t;
-            }
-
-            if (trajectoryLine != null)
-            {
-                trajectoryLine.positionCount = activePointsCount;
-                for (int i = 0; i < activePointsCount; i++)
-                {
-                    trajectoryLine.SetPosition(i, points[i]);
-                }
-            }
-
-            // Position and align landing marker
-            if (landingMarker != null)
-            {
-                if (hitSomething)
-                {
-                    landingMarker.SetActive(true);
-                    landingMarker.transform.position = hitPosition + hitNormal * 0.01f;
-                    landingMarker.transform.rotation = Quaternion.LookRotation(hitNormal) * Quaternion.Euler(90f, 0f, 0f);
-                }
-                else
-                {
-                    landingMarker.SetActive(false);
-                }
-            }
-
-            // Throw Logic (Left-Click while aiming)
-            if (Input.GetMouseButtonDown(0))
-            {
-                ThrowObject(throwOrigin, throwVelocity);
-            }
-        }
-        else
-        {
-            if (isAiming)
-            {
-                isAiming = false;
-                if (trajectoryLine != null) trajectoryLine.enabled = false;
-                if (landingMarker != null) landingMarker.SetActive(false);
-
-                // Cancel Aiming bool parameter to return to Grounded
-                if (animator != null && animator.enabled)
-                {
-                    animator.SetBool("Aiming", false);
-                }
-            }
-        }
-    }
-
-    private void ThrowObject(Vector3 origin, Vector3 velocity)
-    {
-        // Cancel aiming state and hide visuals instantly
-        isAiming = false;
-        if (trajectoryLine != null) trajectoryLine.enabled = false;
-        if (landingMarker != null) landingMarker.SetActive(false);
-
-        // Set camera near clip plane to a very small value to prevent character arms/shoulders from clipping during the throw
-        if (playerCamera != null)
-        {
-            playerCamera.nearClipPlane = 0.01f;
-        }
-
-        // Transition from Throw1 to Throw2 via trigger
-        if (animator != null && animator.enabled)
-        {
-            animator.SetBool("Aiming", false);
-            animator.SetTrigger("Throw");
-        }
- 
-        // Trigger throw timing block (blocks aiming for the swing duration)
-        isThrowingAnim = true;
-        throwAnimTimer = 0f;
-        throwExitBlend = 1f;
- 
-        // Start delayed projectile spawn to match the release point (0.1s delay after resuming)
-        StartCoroutine(ThrowCoroutine(origin, velocity, 0.1f));
-    }
- 
-    private System.Collections.IEnumerator ThrowCoroutine(Vector3 origin, Vector3 velocity, float delay)
-    {
-        yield return new WaitForSeconds(delay);
-
-        // Revert spawn position to the camera POV offset origin
-        Vector3 spawnPos = origin;
- 
-        if (PhotonNetwork.IsConnected)
-        {
-            // Spawn network object via PUN
-            GameObject rockObj = PhotonNetwork.Instantiate(throwablePrefabName, spawnPos, Quaternion.identity);
-            ThrowableObject throwable = rockObj.GetComponent<ThrowableObject>();
-            if (throwable != null)
-            {
-                throwable.InitializeVelocity(velocity);
-            }
-        }
-        else
-        {
-            // Spawn local object
-            GameObject rockPrefab = Resources.Load<GameObject>(throwablePrefabName);
-            if (rockPrefab != null)
-            {
-                GameObject rockObj = Instantiate(rockPrefab, spawnPos, Quaternion.identity);
-                ThrowableObject throwable = rockObj.GetComponent<ThrowableObject>();
-                if (throwable != null)
-                {
-                    throwable.InitializeVelocity(velocity);
-                }
-            }
-        }
-    }
-
-    private bool CompareSafeTag(Collider col, string tag)
-    {
-        if (col == null) return false;
-        #if UNITY_EDITOR
-        // Verify if tag is actually registered in the current editor session to prevent native console errors
-        if (System.Array.IndexOf(UnityEditorInternal.InternalEditorUtility.tags, tag) < 0)
-        {
-            return false;
-        }
-        #endif
-        try
-        {
-            return col.CompareTag(tag);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private void OnTriggerEnter(Collider other)
-    {
-        // Only execute checkpoint saving and death zones for the local player
-        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
-
-        if (CompareSafeTag(other, "Checkpoint"))
-        {
-            // Try to find a custom designated spawn point child, otherwise use the player's exact contact position
-            Transform spawnPoint = other.transform.Find("SpawnPoint");
-            if (spawnPoint == null) spawnPoint = other.transform.Find("Spawn");
-
-            if (spawnPoint != null)
-            {
-                activeCheckpointPosition = spawnPoint.position;
-            }
-            else
-            {
-                activeCheckpointPosition = transform.position;
-            }
-            Debug.Log("Checkpoint saved at: " + activeCheckpointPosition);
-        }
-        else if (CompareSafeTag(other, "KillZone") || CompareSafeTag(other, "DeadZone"))
-        {
-            Respawn();
-        }
-    }
-
-    private void OnControllerColliderHit(ControllerColliderHit hit)
-    {
-        // Handle solid physical checkpoints and death zones
-        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
-
-        if (CompareSafeTag(hit.collider, "Checkpoint"))
-        {
-            // Try to find a custom designated spawn point child, otherwise use the player's exact contact position
-            Transform spawnPoint = hit.collider.transform.Find("SpawnPoint");
-            if (spawnPoint == null) spawnPoint = hit.collider.transform.Find("Spawn");
-
-            if (spawnPoint != null)
-            {
-                activeCheckpointPosition = spawnPoint.position;
-            }
-            else
-            {
-                activeCheckpointPosition = transform.position;
-            }
-            Debug.Log("Checkpoint saved (via controller hit) at: " + activeCheckpointPosition);
-        }
-        else if (CompareSafeTag(hit.collider, "KillZone") || CompareSafeTag(hit.collider, "DeadZone"))
-        {
-            Respawn();
-        }
+        airTimeCounter = 0f;
+        Debug.Log($"[FallDamage] Air time manually reset for {name}.");
     }
 
     public void Respawn()
     {
         // Only respawn the local player client
-        if (PhotonNetwork.IsConnected && !photonView.IsMine) return;
+        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
 
-        Debug.Log("Player died. Respawning at recent checkpoint: " + activeCheckpointPosition);
+        if (!isDead)
+        {
+            isDead = true;
+            clickCountToRespawn = 0;
+            
+            // Reset the giant to spawn position!
+            var giant = FindObjectOfType<GiantPharaohAI>();
+            if (giant != null)
+            {
+                giant.ResetToSpawn();
+            }
+
+            // Ensure UI exists and is shown
+            if (deathOverlayObj == null)
+            {
+                CreateDeathUI();
+            }
+
+            if (deathOverlayObj != null)
+            {
+                deathOverlayObj.SetActive(true);
+                UpdateDeathUI();
+            }
+        }
+    }
+
+    private void ExecuteRespawn()
+    {
+        if (deathOverlayObj != null)
+        {
+            deathOverlayObj.SetActive(false);
+        }
+
+        Debug.Log("Player respawning at recent checkpoint after click spam: " + activeCheckpointPosition);
 
         // Temporarily disable CharacterController so we can modify the transform position directly
         if (controller != null)
@@ -974,10 +1107,637 @@ public class FirstPersonController : MonoBehaviourPun
 
         transform.position = activeCheckpointPosition;
         verticalVelocity = 0f;
+        airTimeCounter = 0f;
 
         if (controller != null)
         {
-            controller.enabled = true;
+                    controller.enabled = true;
         }
+
+        isDead = false;
+
+        SetHoldingTorch(false);
+
+        OnLocalPlayerRespawn?.Invoke(activeCheckpointPosition);
+    }
+
+    public void TriggerPlaceTorchAnimation(System.Action onPlaced)
+    {
+        if (isHoldingTorch && !isPlacingTorch)
+        {
+            isPlacingTorch = true;
+            torchPlaceTimer = 0.6f;
+            onTorchPlacedCallback = onPlaced;
+        }
+    }
+
+    public void SetHoldingTorch(bool holding)
+    {
+        if (PhotonNetwork.IsConnected)
+        {
+            photonView.RPC("SetHoldingTorchRPC", RpcTarget.AllBuffered, holding);
+        }
+        else
+        {
+            SetHoldingTorchLocal(holding);
+        }
+    }
+
+    [PunRPC]
+    private void SetHoldingTorchRPC(bool holding)
+    {
+        SetHoldingTorchLocal(holding);
+    }
+
+    private void SetHoldingTorchLocal(bool holding)
+    {
+        isHoldingTorch = holding;
+
+        if (leftHandTorchObj == null && leftHandJoint != null)
+        {
+            Transform torchTrans = leftHandJoint.Find("SM_Prop_Torch_05");
+            if (torchTrans != null)
+            {
+                leftHandTorchObj = torchTrans.gameObject;
+            }
+        }
+
+        if (leftHandTorchObj != null)
+        {
+            leftHandTorchObj.SetActive(holding);
+        }
+    }
+
+    private void CreateDeathUI()
+    {
+        if (deathOverlayObj != null) return;
+
+        // Create Canvas GameObject
+        deathOverlayObj = new GameObject("DeathOverlayCanvas");
+        Canvas canvas = deathOverlayObj.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 999;
+        
+        // Add CanvasScaler
+        var scaler = deathOverlayObj.AddComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        
+        // Add GraphicRaycaster
+        deathOverlayObj.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+
+        // 1. Dark Red Overlay Panel
+        GameObject panelObj = new GameObject("BackgroundPanel");
+        panelObj.transform.SetParent(deathOverlayObj.transform, false);
+        var panelImage = panelObj.AddComponent<UnityEngine.UI.Image>();
+        panelImage.color = new Color(0.08f, 0.01f, 0.01f, 0.85f); // Transparent dark red
+        
+        var rectPanel = panelObj.GetComponent<RectTransform>();
+        rectPanel.anchorMin = Vector2.zero;
+        rectPanel.anchorMax = Vector2.one;
+        rectPanel.sizeDelta = Vector2.zero;
+
+        // 2. Title Text "YOU DIED"
+        GameObject titleObj = new GameObject("TitleText");
+        titleObj.transform.SetParent(panelObj.transform, false);
+        var titleText = titleObj.AddComponent<UnityEngine.UI.Text>();
+        titleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        titleText.text = "YOU DIED";
+        titleText.fontSize = 90;
+        titleText.alignment = TextAnchor.MiddleCenter;
+        titleText.color = new Color(0.9f, 0.1f, 0.1f, 1f);
+        
+        var rectTitle = titleObj.GetComponent<RectTransform>();
+        rectTitle.anchorMin = new Vector2(0.5f, 0.6f);
+        rectTitle.anchorMax = new Vector2(0.5f, 0.6f);
+        rectTitle.anchoredPosition = new Vector2(0f, 50f);
+        rectTitle.sizeDelta = new Vector2(800f, 150f);
+
+        // Add a soft glow shadow component
+        var shadow = titleObj.AddComponent<UnityEngine.UI.Shadow>();
+        shadow.effectColor = new Color(1f, 0f, 0f, 0.5f);
+        shadow.effectDistance = new Vector2(4f, -4f);
+
+        // 3. Subtitle Text "Spam Left Click to Respawn!"
+        GameObject subObj = new GameObject("SubtitleText");
+        subObj.transform.SetParent(panelObj.transform, false);
+        var subText = subObj.AddComponent<UnityEngine.UI.Text>();
+        subText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        subText.text = "Spam Left Click to Respawn!";
+        subText.fontSize = 35;
+        subText.alignment = TextAnchor.MiddleCenter;
+        subText.color = new Color(0.8f, 0.8f, 0.8f, 1f);
+        
+        var rectSub = subObj.GetComponent<RectTransform>();
+        rectSub.anchorMin = new Vector2(0.5f, 0.5f);
+        rectSub.anchorMax = new Vector2(0.5f, 0.5f);
+        rectSub.anchoredPosition = new Vector2(0f, -30f);
+        rectSub.sizeDelta = new Vector2(800f, 50f);
+
+        // 4. Progress Text "(Clicks: 0 / 5)"
+        GameObject progressTextObj = new GameObject("ProgressText");
+        progressTextObj.transform.SetParent(panelObj.transform, false);
+        deathClicksText = progressTextObj.AddComponent<UnityEngine.UI.Text>();
+        deathClicksText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        deathClicksText.text = "Clicks: 0 / " + requiredClicksForRespawn;
+        deathClicksText.fontSize = 28;
+        deathClicksText.alignment = TextAnchor.MiddleCenter;
+        deathClicksText.color = new Color(1f, 0.3f, 0.3f, 1f);
+        
+        var rectProg = progressTextObj.GetComponent<RectTransform>();
+        rectProg.anchorMin = new Vector2(0.5f, 0.45f);
+        rectProg.anchorMax = new Vector2(0.5f, 0.45f);
+        rectProg.anchoredPosition = new Vector2(0f, -80f);
+        rectProg.sizeDelta = new Vector2(400f, 40f);
+
+        // 5. Progress Bar Background
+        GameObject barBgObj = new GameObject("ProgressBarBackground");
+        barBgObj.transform.SetParent(panelObj.transform, false);
+        var barBgImage = barBgObj.AddComponent<UnityEngine.UI.Image>();
+        barBgImage.color = new Color(0.2f, 0.05f, 0.05f, 1f);
+        
+        var rectBarBg = barBgObj.GetComponent<RectTransform>();
+        rectBarBg.anchorMin = new Vector2(0.5f, 0.4f);
+        rectBarBg.anchorMax = new Vector2(0.5f, 0.4f);
+        rectBarBg.anchoredPosition = new Vector2(0f, -120f);
+        rectBarBg.sizeDelta = new Vector2(400f, 20f);
+
+        // 6. Progress Bar Fill
+        GameObject barFillObj = new GameObject("ProgressBarFill");
+        barFillObj.transform.SetParent(barBgObj.transform, false);
+        deathProgressBarFill = barFillObj.AddComponent<UnityEngine.UI.Image>();
+        deathProgressBarFill.color = new Color(0.9f, 0.1f, 0.1f, 1f);
+        
+        var rectBarFill = barFillObj.GetComponent<RectTransform>();
+        rectBarFill.anchorMin = new Vector2(0f, 0f);
+        rectBarFill.anchorMax = new Vector2(0f, 1f);
+        rectBarFill.pivot = new Vector2(0f, 0.5f);
+        rectBarFill.anchoredPosition = Vector2.zero;
+        rectBarFill.sizeDelta = new Vector2(0f, 0f);
+
+        // Hide initially
+        deathOverlayObj.SetActive(false);
+    }
+
+    private void UpdateDeathUI()
+    {
+        if (deathOverlayObj == null) return;
+        
+        if (deathClicksText != null)
+        {
+            deathClicksText.text = "Clicks: " + clickCountToRespawn + " / " + requiredClicksForRespawn;
+        }
+
+        if (deathProgressBarFill != null)
+        {
+            float fillPct = (float)clickCountToRespawn / requiredClicksForRespawn;
+            var rect = deathProgressBarFill.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(fillPct * 400f, 0f);
+        }
+    }
+
+    public void TriggerCameraShake(float duration, float magnitude)
+    {
+        // Only shake local player camera
+        if (PhotonNetwork.IsConnected && !IsLocalPlayer) return;
+
+        StartCoroutine(DoCameraShake(duration, magnitude));
+    }
+
+    private System.Collections.IEnumerator DoCameraShake(float duration, float magnitude)
+    {
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float currentMagnitude = magnitude * (1f - (elapsed / duration));
+            cameraShakeOffset = Random.insideUnitSphere * currentMagnitude;
+            yield return null;
+        }
+        cameraShakeOffset = Vector3.zero;
+    }
+
+    public void RouteLeverInteract(InteractLever lever)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncLeverInteractRPC", RpcTarget.All, GetGameObjectPath(lever.gameObject));
+        }
+    }
+
+    [PunRPC]
+    private void SyncLeverInteractRPC(string path)
+    {
+        GameObject go = GameObject.Find(path);
+        if (go != null)
+        {
+            InteractLever lever = go.GetComponent<InteractLever>();
+            if (lever != null)
+            {
+                PlayerInteract pi = GetComponent<PlayerInteract>();
+                lever.InteractLocal(pi);
+            }
+        }
+    }
+
+    public void RouteBothLevers(InteractLever lever, bool active)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncBothLeversRPC", RpcTarget.All, GetGameObjectPath(lever.gameObject), active);
+        }
+    }
+
+    public void RouteResetLevers(InteractLever lever)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncResetLeversRPC", RpcTarget.All, GetGameObjectPath(lever.gameObject));
+        }
+    }
+
+    [PunRPC]
+    private void SyncResetLeversRPC(string leverPath)
+    {
+        GameObject go = GameObject.Find(leverPath);
+        if (go != null)
+        {
+            InteractLever lever = go.GetComponent<InteractLever>();
+            if (lever != null)
+            {
+                lever.ResetBothLeversLocal();
+            }
+        }
+    }
+
+    public void RouteRedLightShoot(Vector3 spawnPos, Vector3 direction)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SpawnRedLightProjectileRPC", RpcTarget.All, spawnPos, direction);
+        }
+    }
+
+    [PunRPC]
+    private void SpawnRedLightProjectileRPC(Vector3 spawnPos, Vector3 direction)
+    {
+        RedLightShooter shooter = FindObjectOfType<RedLightShooter>();
+        if (shooter != null)
+        {
+            shooter.SpawnProjectileLocal(spawnPos, direction);
+        }
+    }
+
+    [PunRPC]
+    private void SyncBothLeversRPC(string leverPath, bool active)
+    {
+        GameObject go = GameObject.Find(leverPath);
+        if (go != null)
+        {
+            InteractLever lever = go.GetComponent<InteractLever>();
+            if (lever != null)
+            {
+                if (active)
+                {
+                    lever.ActivateBothLeversLocal();
+                }
+                else
+                {
+                    lever.DeactivateBothLeversLocal();
+                }
+            }
+        }
+    }
+
+    public void RouteTriggerCross(InteractWhenCrossed trigger, GameObject player, bool enter)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncTriggerCrossRPC", RpcTarget.All, GetGameObjectPath(trigger.gameObject), GetGameObjectPath(player), enter);
+        }
+    }
+
+    [PunRPC]
+    private void SyncTriggerCrossRPC(string triggerPath, string playerPath, bool enter)
+    {
+        GameObject goTrigger = GameObject.Find(triggerPath);
+        GameObject goPlayer = GameObject.Find(playerPath);
+        if (goTrigger != null && goPlayer != null)
+        {
+            InteractWhenCrossed trigger = goTrigger.GetComponent<InteractWhenCrossed>();
+            if (trigger != null)
+            {
+                if (enter)
+                {
+                    trigger.OnEnterZoneTriggerLocal(goPlayer);
+                }
+                else
+                {
+                    trigger.OnExitZoneTriggerLocal(goPlayer);
+                }
+            }
+        }
+    }
+
+    // --- Puppet Game Routing ---
+    public void RoutePuppetStartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetStartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetStartGameRPC()
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.StartGameLocal();
+        }
+    }
+
+    public void RoutePuppetRestartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetRestartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetRestartGameRPC()
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.RestartGameLocal();
+        }
+    }
+
+    public void RoutePuppetEndGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetEndGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetEndGameRPC()
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.EndGameLocal();
+        }
+    }
+
+    public void RoutePuppetSyncRoundState(int[] poseIndices, int answerSymbolID)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetRoundStateRPC", RpcTarget.All, poseIndices, answerSymbolID);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetRoundStateRPC(int[] poseIndices, int answerSymbolID)
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.SyncRoundStateLocal(poseIndices, answerSymbolID);
+        }
+    }
+
+    public void RoutePuppetGuessSymbol(int GuessSymbolID)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetGuessSymbolRPC", RpcTarget.All, GuessSymbolID);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetGuessSymbolRPC(int GuessSymbolID)
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.GuessSymbolLocal(GuessSymbolID);
+        }
+    }
+
+    public void RoutePuppetTimeUp()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncPuppetTimeUpRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncPuppetTimeUpRPC()
+    {
+        PuppetGame pg = FindObjectOfType<PuppetGame>();
+        if (pg != null)
+        {
+            pg.TimeUpLocal();
+        }
+    }
+
+    // --- Falling Floors Routing ---
+    public void RouteFallingFloorsStartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncFallingFloorsStartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncFallingFloorsStartGameRPC()
+    {
+        FallingFloors ff = FindObjectOfType<FallingFloors>();
+        if (ff != null)
+        {
+            ff.StartGameLocal();
+        }
+    }
+
+    public void RouteFallingFloorsRestartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncFallingFloorsRestartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncFallingFloorsRestartGameRPC()
+    {
+        FallingFloors ff = FindObjectOfType<FallingFloors>();
+        if (ff != null)
+        {
+            ff.RestartGameLocal();
+        }
+    }
+
+    public void RouteFallingFloorsEndGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncFallingFloorsEndGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncFallingFloorsEndGameRPC()
+    {
+        FallingFloors ff = FindObjectOfType<FallingFloors>();
+        if (ff != null)
+        {
+            ff.EndGameLocal();
+        }
+    }
+
+    public void RouteFallingFloorsSyncTransition(int round, int nextStateVal, int[] symbols)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncFallingFloorsTransitionRPC", RpcTarget.All, round, nextStateVal, symbols);
+        }
+    }
+
+    [PunRPC]
+    private void SyncFallingFloorsTransitionRPC(int round, int nextStateVal, int[] symbols)
+    {
+        FallingFloors ff = FindObjectOfType<FallingFloors>();
+        if (ff != null)
+        {
+            ff.SyncTransitionLocal(round, nextStateVal, symbols);
+        }
+    }
+
+    // --- Red Light Green Light Routing ---
+    public void RouteRedLightStartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightStartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightStartGameRPC()
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.StartGameLocal();
+        }
+    }
+
+    public void RouteRedLightRestartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightRestartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightRestartGameRPC()
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.RestartGameLocal();
+        }
+    }
+
+    public void RouteRedLightEndGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightEndGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightEndGameRPC()
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.EndGameLocal();
+        }
+    }
+
+    public void RouteRedLightWinGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightWinGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightWinGameRPC()
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.WinGameLocal();
+        }
+    }
+
+    public void RouteRedLightSyncState(int stateVal, float duration)
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightStateRPC", RpcTarget.All, stateVal, duration);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightStateRPC(int stateVal, float duration)
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.SyncStateLocal((RedLightGreenLight.GameState)stateVal, duration);
+        }
+    }
+
+    public void RouteRedLightPlayWarning()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncRedLightPlayWarningRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncRedLightPlayWarningRPC()
+    {
+        RedLightGreenLight rl = FindObjectOfType<RedLightGreenLight>();
+        if (rl != null)
+        {
+            rl.PlayWarningLocal();
+        }
+    }
+
+    private string GetGameObjectPath(GameObject obj)
+    {
+        string path = obj.name;
+        while (obj.transform.parent != null)
+        {
+            obj = obj.transform.parent.gameObject;
+            path = obj.name + "/" + path;
+        }
+        return path;
     }
 }

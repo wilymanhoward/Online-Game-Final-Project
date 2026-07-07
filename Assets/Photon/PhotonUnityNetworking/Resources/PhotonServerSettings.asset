@@ -41,6 +41,53 @@ MonoBehaviour:
   - RespawnSpaceship
   - StartVaultRPC
   - ReceiveVoiceData
+  - SyncPharaohKnockdown
+  - InteractRPC
+  - PickupTorchRPC
+  - SetHoldingTorchRPC
+  - SetTorchStateRPC
+  - PushLidOffRPC
+  - PickupKeyRPC
+  - SyncRoundState
+  - SyncBothCrossRPC
+  - SyncBothExitRPC
+  - SyncOneCrossRPC
+  - SyncOneExitRPC
+  - SyncLeverInteractRPC
+  - SyncTriggerEnterRPC
+  - SyncTriggerExitRPC
+  - SyncCollisionEventRPC
+  - SyncCrossedEventRPC
+  - EndGameRPC
+  - GuessSymbolRPC
+  - RestartGameRPC
+  - StartGameRPC
+  - TimeUpRPC
+  - PlayWarningRPC
+  - SyncStateRPC
+  - SyncTransitionRPC
+  - WinGameRPC
+  - SyncBothLeversRPC
+  - SyncTriggerCrossRPC
+  - SyncFallingFloorsEndGameRPC
+  - SyncFallingFloorsRestartGameRPC
+  - SyncFallingFloorsStartGameRPC
+  - SyncFallingFloorsTransitionRPC
+  - SyncPuppetEndGameRPC
+  - SyncPuppetGuessSymbolRPC
+  - SyncPuppetRestartGameRPC
+  - SyncPuppetRoundStateRPC
+  - SyncPuppetStartGameRPC
+  - SyncPuppetTimeUpRPC
+  - SyncRedLightEndGameRPC
+  - SyncRedLightPlayWarningRPC
+  - SyncRedLightRestartGameRPC
+  - SyncRedLightStartGameRPC
+  - SyncRedLightStateRPC
+  - SyncRedLightWinGameRPC
+  - SyncResetLeversRPC
+  - SpawnProjectileRPC
+  - SpawnRedLightProjectileRPC
   DisableAutoOpenWizard: 1
   ShowSettings: 0
   DevRegionSetOnce: 1
