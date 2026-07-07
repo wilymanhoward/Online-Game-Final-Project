@@ -23,6 +23,15 @@ public class PlayerCheckpointHandler : MonoBehaviour
         // Only execute checkpoint saving and death zones for the local player client
         if (PhotonNetwork.IsConnected && !playerController.photonView.IsMine) return;
 
+        if (other != null && other.gameObject.name.Contains("Torch Collider"))
+        {
+            if (playerController.IsHoldingTorch && !playerController.IsPlacingTorch)
+            {
+                Debug.Log($"[PlayerCheckpointHandler] {name} entered Torch Collider. Triggering discard animation.");
+                playerController.TriggerPlaceTorchAnimation(null);
+            }
+        }
+
         if (CompareSafeTag(other, checkpointTag))
         {
             Transform checkpointTransform = GetCheckpointTransform(other);
