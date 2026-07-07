@@ -15,7 +15,7 @@ public class PlayerInteract : MonoBehaviour
     private Camera mainCamera;
     
     private bool isFrozen = false;
-    private InteractLever currentLever = null;
+    private IInteractable currentInteractable = null;
 
     private void Awake()
     {
@@ -90,8 +90,8 @@ public class PlayerInteract : MonoBehaviour
 
         if (freezeUI != null) freezeUI.SetActive(false);
 
-        InteractLever targetLever = GetTargetLever();
-        bool showUI = (targetLever != null);
+        IInteractable targetInteractable = GetTargetInteractable();
+        bool showUI = (targetInteractable != null);
 
         if (interactUI != null)
         {
@@ -99,7 +99,7 @@ public class PlayerInteract : MonoBehaviour
         }
     }
 
-    private InteractLever GetTargetLever()
+    private IInteractable GetTargetInteractable()
     {
         if (mainCamera == null) return null;
 
@@ -115,12 +115,12 @@ public class PlayerInteract : MonoBehaviour
                 continue;
             }
 
-            // Check tag or fallback to checking for component presence
-            InteractLever lever = candidateHit.collider.GetComponentInParent<InteractLever>();
-            if (lever != null && (candidateHit.collider.CompareTag("Lever") || candidateHit.collider.gameObject.name.Contains("Lever") || true))
+            // Check if the object or its parent has an IInteractable component
+            IInteractable interactable = candidateHit.collider.GetComponentInParent<IInteractable>();
+            if (interactable != null)
             {
                 hit = candidateHit; // Store hit for Gizmos drawing
-                return lever;
+                return interactable;
             }
         }
 
@@ -133,18 +133,22 @@ public class PlayerInteract : MonoBehaviour
 
         if (isFrozen)
         {
-            if (currentLever != null)
+            if (currentInteractable != null)
             {
-                currentLever.Interact();
+                // Set the static InteractingPlayer property before calling Interact
+                FirstPersonController.InteractingPlayer = GetComponent<FirstPersonController>();
+                currentInteractable.Interact();
             }
             return;
         }
 
-        InteractLever targetLever = GetTargetLever();
-        if (targetLever != null)
+        IInteractable targetInteractable = GetTargetInteractable();
+        if (targetInteractable != null)
         {
-            currentLever = targetLever;
-            targetLever.Interact();
+            currentInteractable = targetInteractable;
+            // Set the static InteractingPlayer property before calling Interact
+            FirstPersonController.InteractingPlayer = GetComponent<FirstPersonController>();
+            targetInteractable.Interact();
         }
     }
 
@@ -158,7 +162,7 @@ public class PlayerInteract : MonoBehaviour
 
         if (!freeze)
         {
-            currentLever = null;
+            currentInteractable = null;
         }
     }
 

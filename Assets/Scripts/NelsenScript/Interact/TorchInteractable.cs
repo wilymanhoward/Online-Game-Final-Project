@@ -164,7 +164,28 @@ public class TorchInteractable : MonoBehaviour, IInteractable
         // Hide/show all child objects of the target (like FX_Fire_01 and TorchLight)
         foreach (Transform child in target.transform)
         {
-            child.gameObject.SetActive(!pickedUp);
+            // If the child contains a collider (or has children with colliders), only toggle visuals/lights/particles
+            if (child.GetComponent<Collider>() != null || child.GetComponentInChildren<Collider>() != null)
+            {
+                var childMR = child.GetComponent<MeshRenderer>();
+                if (childMR != null) childMR.enabled = !pickedUp;
+
+                var childLight = child.GetComponent<Light>();
+                if (childLight != null) childLight.enabled = !pickedUp;
+
+                var childPS = child.GetComponent<ParticleSystem>();
+                if (childPS != null)
+                {
+                    if (pickedUp) childPS.Stop();
+                    else childPS.Play();
+                }
+
+                ToggleVisualsRecursive(child, !pickedUp);
+            }
+            else
+            {
+                child.gameObject.SetActive(!pickedUp);
+            }
         }
 
         // Hide/show any sibling GameObject named "Torch" (which is the CelyneAssets mesh wrapper containing the wall torch)
@@ -179,12 +200,34 @@ public class TorchInteractable : MonoBehaviour, IInteractable
                     siblingMR.enabled = !pickedUp;
                 }
 
+                // Keep the sibling collider enabled so it remains interactable when empty
                 var siblingCol = siblingTorch.GetComponent<Collider>();
                 if (siblingCol != null)
                 {
-                    siblingCol.enabled = !pickedUp;
+                    siblingCol.enabled = true;
                 }
             }
+        }
+    }
+
+    private void ToggleVisualsRecursive(Transform parent, bool show)
+    {
+        foreach (Transform child in parent)
+        {
+            var mr = child.GetComponent<MeshRenderer>();
+            if (mr != null) mr.enabled = show;
+
+            var light = child.GetComponent<Light>();
+            if (light != null) light.enabled = show;
+
+            var ps = child.GetComponent<ParticleSystem>();
+            if (ps != null)
+            {
+                if (show) ps.Play();
+                else ps.Stop();
+            }
+
+            ToggleVisualsRecursive(child, show);
         }
     }
 
