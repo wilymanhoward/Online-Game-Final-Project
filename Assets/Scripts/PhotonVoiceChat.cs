@@ -16,6 +16,7 @@ public class PhotonVoiceChat : MonoBehaviourPun
     private string micDevice;
     private AudioClip micClip;
     private int lastSamplePos = 0;
+    private int recordingSampleRate = SAMPLE_RATE;
     
     // Accumulator for local mic samples
     private System.Collections.Generic.List<float> micAccumulator = new System.Collections.Generic.List<float>();
@@ -29,37 +30,19 @@ public class PhotonVoiceChat : MonoBehaviourPun
     // Toggle Voice Chat states
     private bool isMicEnabled = true;
 
+    private bool wasMine = false;
+    private bool isInitialized = false;
+
     void Start()
     {
         audioSource = GetComponent<AudioSource>();
         
-        audioSource.spatialBlend = 1.0f; // 3D Spatial
+        audioSource.spatialBlend = 0.0f; // 2D (Global Voice Chat)
         audioSource.loop = true;
         audioSource.playOnAwake = false;
         audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
         audioSource.minDistance = 1.5f;
         audioSource.maxDistance = 25f;
-
-        if (photonView.IsMine)
-        {
-            if (Microphone.devices.Length > 0)
-            {
-                micDevice = Microphone.devices[0];
-                micClip = Microphone.Start(micDevice, true, 1, SAMPLE_RATE);
-            }
-            else
-            {
-                Debug.LogWarning("No microphone found!");
-            }
-        }
-        else
-        {
-            playbackClip = AudioClip.Create("PlaybackVoice", SAMPLE_RATE * CLIP_DURATION, 1, SAMPLE_RATE, false);
-            audioSource.clip = playbackClip;
-            
-            float[] silence = new float[SAMPLE_RATE * CLIP_DURATION];
-            playbackClip.SetData(silence, 0);
-        }
     }
 
     void Update()
@@ -69,7 +52,15 @@ public class PhotonVoiceChat : MonoBehaviourPun
             return;
         }
 
-        if (photonView.IsMine)
+        bool currentIsMine = photonView.IsMine;
+        if (!isInitialized || currentIsMine != wasMine)
+        {
+            InitializeVoice(currentIsMine);
+            wasMine = currentIsMine;
+            isInitialized = true;
+        }
+
+        if (currentIsMine)
         {
             // Toggle Mic when pressing R
             if (Input.GetKeyDown(KeyCode.R))
@@ -89,15 +80,15 @@ public class PhotonVoiceChat : MonoBehaviourPun
             int newSamplesCount = currentPos - lastSamplePos;
             if (newSamplesCount < 0)
             {
-                newSamplesCount = SAMPLE_RATE - lastSamplePos + currentPos;
+                newSamplesCount = recordingSampleRate - lastSamplePos + currentPos;
             }
 
             if (newSamplesCount > 0)
             {
                 float[] samples = new float[newSamplesCount];
 
-                // Circular read of microphone buffer
-                int firstPartLength = SAMPLE_RATE - lastSamplePos;
+                // Circular read of microphone buffer using recordingSampleRate
+                int firstPartLength = recordingSampleRate - lastSamplePos;
                 if (firstPartLength < newSamplesCount)
                 {
                     float[] part1 = new float[firstPartLength];
@@ -127,17 +118,18 @@ public class PhotonVoiceChat : MonoBehaviourPun
                         micAccumulator.RemoveRange(0, SEND_CHUNK_SIZE);
 
                         byte[] compressed = CompressMuLaw(chunk);
-                        photonView.RPC("ReceiveVoiceData", RpcTarget.Others, compressed);
+                        photonView.RPC("ReceiveVoiceData", RpcTarget.Others, compressed, recordingSampleRate);
                     }
                 }
             }
         }
         else
         {
-            if (isPlaying && audioSource.isPlaying)
+            if (isPlaying && audioSource.isPlaying && playbackClip != null)
             {
                 int playPos = audioSource.timeSamples;
-                int bufferLength = SAMPLE_RATE * CLIP_DURATION;
+                int senderSampleRate = playbackClip.frequency;
+                int bufferLength = senderSampleRate * CLIP_DURATION;
                 
                 int distance = playbackWritePos - playPos;
                 if (distance < 0)
@@ -145,26 +137,44 @@ public class PhotonVoiceChat : MonoBehaviourPun
                     distance += bufferLength;
                 }
 
-                if (distance < UNDERFLOW_THRESHOLD)
+                int playStartThreshold = senderSampleRate / 10;
+                int underflowThreshold = senderSampleRate * 30 / 1000;
+                int latencyLimit = senderSampleRate * 300 / 1000;
+
+                if (distance < underflowThreshold)
                 {
                     audioSource.Pause();
                     isPlaying = false;
                 }
-                else if (distance > LATENCY_LIMIT)
+                else if (distance > latencyLimit)
                 {
-                    audioSource.timeSamples = (playbackWritePos - PLAYBACK_START_THRESHOLD + bufferLength) % bufferLength;
+                    audioSource.timeSamples = (playbackWritePos - playStartThreshold + bufferLength) % bufferLength;
                 }
             }
         }
     }
 
     [PunRPC]
-    void ReceiveVoiceData(byte[] data)
+    void ReceiveVoiceData(byte[] data, int senderSampleRate)
     {
         if (photonView.IsMine) return;
 
+        int bufferLength = senderSampleRate * CLIP_DURATION;
+
+        // If the playbackClip frequency doesn't match the sender's sample rate, recreate it!
+        if (playbackClip == null || playbackClip.frequency != senderSampleRate)
+        {
+            playbackClip = AudioClip.Create("PlaybackVoice", bufferLength, 1, senderSampleRate, false);
+            audioSource.clip = playbackClip;
+            playbackWritePos = 0;
+            isPlaying = false;
+            
+            float[] silence = new float[bufferLength];
+            playbackClip.SetData(silence, 0);
+            Debug.Log($"[PhotonVoiceChat] Created playback buffer matching sender sample rate: {senderSampleRate} Hz");
+        }
+
         float[] decompressed = DecompressMuLaw(data);
-        int bufferLength = SAMPLE_RATE * CLIP_DURATION;
 
         int firstPartLength = bufferLength - playbackWritePos;
         if (firstPartLength < decompressed.Length)
@@ -184,17 +194,77 @@ public class PhotonVoiceChat : MonoBehaviourPun
 
         playbackWritePos = (playbackWritePos + decompressed.Length) % bufferLength;
 
+        int playStartThreshold = senderSampleRate / 10;
+
         if (!isPlaying)
         {
             int playPos = audioSource.timeSamples;
             int distance = playbackWritePos - playPos;
             if (distance < 0) distance += bufferLength;
 
-            if (distance >= PLAYBACK_START_THRESHOLD)
+            if (distance >= playStartThreshold)
             {
                 audioSource.Play();
                 isPlaying = true;
             }
+        }
+    }
+
+    private void InitializeVoice(bool isLocal)
+    {
+        Debug.Log($"[PhotonVoiceChat] Initializing voice for {gameObject.name}. IsLocal = {isLocal}");
+        
+        if (isLocal)
+        {
+            // Stop any ongoing playback
+            if (audioSource != null)
+            {
+                audioSource.Stop();
+                audioSource.clip = null;
+            }
+            isPlaying = false;
+            playbackClip = null;
+
+            // Start microphone
+            if (Microphone.devices.Length > 0)
+            {
+                micDevice = Microphone.devices[0];
+                micClip = Microphone.Start(micDevice, true, 1, SAMPLE_RATE);
+                recordingSampleRate = micClip != null ? micClip.frequency : SAMPLE_RATE;
+                lastSamplePos = 0;
+                micAccumulator.Clear();
+                Debug.Log($"[PhotonVoiceChat] Started microphone '{micDevice}' for local player. Actual Sample Rate: {recordingSampleRate}");
+            }
+            else
+            {
+                Debug.LogWarning("[PhotonVoiceChat] No microphone found!");
+            }
+        }
+        else
+        {
+            // Stop microphone if it was running
+            if (micDevice != null && Microphone.IsRecording(micDevice))
+            {
+                Microphone.End(micDevice);
+                Debug.Log($"[PhotonVoiceChat] Stopped microphone for remote player.");
+            }
+            micClip = null;
+
+            // Setup playback clip
+            playbackClip = AudioClip.Create("PlaybackVoice", SAMPLE_RATE * CLIP_DURATION, 1, SAMPLE_RATE, false);
+            if (audioSource != null)
+            {
+                audioSource.clip = playbackClip;
+                audioSource.spatialBlend = 0.0f; // 2D (Global Voice Chat)
+                audioSource.loop = true;
+                audioSource.playOnAwake = false;
+            }
+            playbackWritePos = 0;
+            isPlaying = false;
+
+            float[] silence = new float[SAMPLE_RATE * CLIP_DURATION];
+            playbackClip.SetData(silence, 0);
+            Debug.Log("[PhotonVoiceChat] Configured playback buffer for remote player.");
         }
     }
 
