@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: c20c2e497b96a6348b00dbd43422eb67
+guid: 097ee85aeb4744f4991093e6f538a561
 ModelImporter:
   serializedVersion: 22103
   internalIDToNameTable: []
@@ -33,11 +33,11 @@ ModelImporter:
     extraUserProperties: []
     clipAnimations:
     - serializedVersion: 16
-      name: Stand Up
+      name: Falling Back Death
       takeName: mixamo.com
       internalID: -203655887218126122
       firstFrame: 0
-      lastFrame: 248
+      lastFrame: 131
       wrapMode: 0
       orientationOffsetY: 0
       level: 0

@@ -51,7 +51,23 @@ public static class BuildGiantPharaoh
         AnimatorState jumpAttackState = rootStateMachine.AddState("JumpAttack");
         jumpAttackState.motion = jumpAttackClip;
 
-        // Transitions
+        // Build new states for the state machine
+        AnimatorState hurtState = rootStateMachine.AddState("Hurt");
+        hurtState.motion = idleClip; // Recoil fallback
+
+        AnimationClip fallClip = LoadClipFromFBX("Assets/Photon/PhotonUnityNetworking/Demos/Shared Assets/Animations/HumanoidJumpAndFall.fbx");
+        if (fallClip == null) fallClip = LoadClipFromFBX("Assets/Photon/PhotonUnityNetworking/Demos/Shared Assets/Animations/HumanoidMidAir.fbx");
+        AnimatorState fallState = rootStateMachine.AddState("Fall");
+        fallState.motion = fallClip != null ? fallClip : idleClip;
+
+        AnimationClip crouchClip = LoadClipFromFBX("Assets/Photon/PhotonUnityNetworking/Demos/Shared Assets/Animations/HumanoidCrouch.fbx");
+
+        AnimationClip recoveryClip = LoadClipFromFBX("Assets/Animation/X Bot@Standing Up.fbx");
+        if (recoveryClip == null) recoveryClip = LoadClipFromFBX("Assets/CelyneAssets/Characters@Stand Up.fbx");
+        AnimatorState recoveryState = rootStateMachine.AddState("Recovery");
+        recoveryState.motion = recoveryClip != null ? recoveryClip : idleClip;
+
+        // Transitions (kept for basic compatibility, though code crossfades directly)
         var toWalk = idleState.AddTransition(walkState);
         toWalk.AddCondition(AnimatorConditionMode.Greater, 0.1f, "Speed");
         toWalk.duration = 0.25f;
@@ -140,6 +156,24 @@ public static class BuildGiantPharaoh
         if (pharaohAI == null)
         {
             pharaohAI = pharaohObj.AddComponent<GiantPharaohAI>();
+        }
+
+        // Configure default attacks in the inspector
+        if (pharaohAI.enemyAttacks == null || pharaohAI.enemyAttacks.Length == 0)
+        {
+            var attack1 = new EnemyStateMachineController.EnemyAttack
+            {
+                animatorStateName = "JumpAttack",
+                distanceToAttack = 2.2f,
+                objectsToActivate = new EnemyStateMachineController.AttackObjectTrigger[0]
+            };
+            var attack2 = new EnemyStateMachineController.EnemyAttack
+            {
+                animatorStateName = "StompAttack", // matches stomp check
+                distanceToAttack = 4.5f,
+                objectsToActivate = new EnemyStateMachineController.AttackObjectTrigger[0]
+            };
+            pharaohAI.enemyAttacks = new EnemyStateMachineController.EnemyAttack[] { attack1, attack2 };
         }
 
         // Save Scene
