@@ -1370,21 +1370,33 @@ public class FirstPersonController : MonoBehaviourPun
         }
     }
 
-    public void RouteRedLightShoot(Vector3 spawnPos, Vector3 direction)
+    public void RouteRedLightShoot(string shooterPath, Vector3 spawnPos, Vector3 direction)
     {
         if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            photonView.RPC("SpawnRedLightProjectileRPC", RpcTarget.All, spawnPos, direction);
+            photonView.RPC("SpawnRedLightProjectileRPC", RpcTarget.All, shooterPath, spawnPos, direction);
         }
     }
 
     [PunRPC]
-    private void SpawnRedLightProjectileRPC(Vector3 spawnPos, Vector3 direction)
+    private void SpawnRedLightProjectileRPC(string shooterPath, Vector3 spawnPos, Vector3 direction)
     {
-        RedLightShooter shooter = FindObjectOfType<RedLightShooter>();
-        if (shooter != null)
+        GameObject go = GameObject.Find(shooterPath);
+        if (go != null)
         {
-            shooter.SpawnProjectileLocal(spawnPos, direction);
+            RedLightShooter shooter = go.GetComponent<RedLightShooter>();
+            if (shooter != null)
+            {
+                shooter.SpawnProjectileLocal(spawnPos, direction);
+            }
+        }
+        else
+        {
+            RedLightShooter shooter = FindObjectOfType<RedLightShooter>();
+            if (shooter != null)
+            {
+                shooter.SpawnProjectileLocal(spawnPos, direction);
+            }
         }
     }
 
