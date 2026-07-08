@@ -45,6 +45,8 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
     [Tooltip("Drag a UI Image/Panel GameObject here that is colored Black for fade transitions")]
     public GameObject blackScreenObject;
     public float fadeDuration = 1f;
+    [Tooltip("Extra time to keep the black screen up after Puzzle1 loads, so the player's camera has time to activate before the fade-out")]
+    public float postLoadFadeDelay = 0.5f;
 
     [Header("Audio Settings")]
     public AudioSource bgmSource;
@@ -373,6 +375,26 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         return 1f - (1f - x) * (1f - x);
     }
 
+    // Keeps the black screen up (and alive) across the Puzzle1 scene load so the
+    // player never briefly sees Puzzle1's default editor camera before their own
+    // networked player camera activates. The black screen fades itself out afterwards.
+    private void PersistBlackScreenAcrossLoad()
+    {
+        if (blackScreenObject == null) return;
+
+        blackScreenObject.SetActive(true);
+        CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
+        if (cg == null) cg = blackScreenObject.AddComponent<CanvasGroup>();
+        cg.alpha = 1f;
+
+        PersistentFadeIn fadeIn = blackScreenObject.GetComponent<PersistentFadeIn>();
+        if (fadeIn == null) fadeIn = blackScreenObject.AddComponent<PersistentFadeIn>();
+        fadeIn.fadeDuration = fadeDuration;
+        fadeIn.extraDelay = postLoadFadeDelay;
+        fadeIn.targetSceneName = "Puzzle1";
+        fadeIn.Arm();
+    }
+
 
 
     public override void OnConnectedToMaster()
@@ -546,7 +568,27 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
             Debug.Log("[Transition] Timeline finished naturally.");
         }
 
-        // 5. Instantly load the next scene without any extra delay
+        // 5. Fade to black again before loading, so the scene load/spawn gap is hidden
+        if (blackScreenObject != null)
+        {
+            Debug.Log("[Transition] Fading to black before scene load...");
+            blackScreenObject.SetActive(true);
+            CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
+            if (cg == null) cg = blackScreenObject.AddComponent<CanvasGroup>();
+
+            float fadeElapsed = 0f;
+            while (fadeElapsed < fadeDuration)
+            {
+                fadeElapsed += Time.deltaTime;
+                cg.alpha = Mathf.Clamp01(fadeElapsed / fadeDuration);
+                yield return null;
+            }
+            cg.alpha = 1f;
+        }
+
+        PersistBlackScreenAcrossLoad();
+
+        // 6. Load the next scene now that the screen is fully black
         Debug.Log("[Transition] Attempting to load next scene: Puzzle1");
         isCutscenePlaying = false;
         if (PhotonNetwork.IsMasterClient)
@@ -609,13 +651,7 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
             }
         }
 
-        if (blackScreenObject != null)
-        {
-            blackScreenObject.SetActive(true);
-            CanvasGroup cg = blackScreenObject.GetComponent<CanvasGroup>();
-            if (cg == null) cg = blackScreenObject.AddComponent<CanvasGroup>();
-            cg.alpha = 1f;
-        }
+        PersistBlackScreenAcrossLoad();
 
         if (PhotonNetwork.IsMasterClient)
         {
