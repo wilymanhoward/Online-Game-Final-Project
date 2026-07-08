@@ -95,6 +95,19 @@ public class BossGame : MonoBehaviourPun, IGames
         }
     }
 
+    private FirstPersonController FindLocalPlayer()
+    {
+        var controllers = FindObjectsOfType<FirstPersonController>();
+        foreach (var c in controllers)
+        {
+            if (c.IsLocalPlayer)
+            {
+                return c;
+            }
+        }
+        return null;
+    }
+
     private void InitializePlayersInArena()
     {
         if (arenaCollider == null) return;
@@ -122,9 +135,21 @@ public class BossGame : MonoBehaviourPun, IGames
 
     public void StartGame()
     {
+        PhotonView pv = GetComponent<PhotonView>();
         if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            photonView.RPC("StartGameRPC", RpcTarget.All);
+            if (pv != null && pv.ViewID > 0)
+            {
+                pv.RPC("StartGameRPC", RpcTarget.All);
+            }
+            else
+            {
+                FirstPersonController localPlayer = FindLocalPlayer();
+                if (localPlayer != null)
+                {
+                    localPlayer.RouteBossStartGame();
+                }
+            }
         }
         else
         {
@@ -138,7 +163,7 @@ public class BossGame : MonoBehaviourPun, IGames
         StartGameLocal();
     }
 
-    private void StartGameLocal()
+    public void StartGameLocal()
     {
         gameStarted = true;
         pillarsBrokenCount = 0;
@@ -158,9 +183,21 @@ public class BossGame : MonoBehaviourPun, IGames
 
     public void EndGame()
     {
+        PhotonView pv = GetComponent<PhotonView>();
         if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            photonView.RPC("EndGameRPC", RpcTarget.All);
+            if (pv != null && pv.ViewID > 0)
+            {
+                pv.RPC("EndGameRPC", RpcTarget.All);
+            }
+            else
+            {
+                FirstPersonController localPlayer = FindLocalPlayer();
+                if (localPlayer != null)
+                {
+                    localPlayer.RouteBossEndGame();
+                }
+            }
         }
         else
         {
@@ -174,7 +211,7 @@ public class BossGame : MonoBehaviourPun, IGames
         EndGameLocal();
     }
 
-    private void EndGameLocal()
+    public void EndGameLocal()
     {
         gameStarted = false;
         Debug.Log("[BossGame] Game Ended!");
@@ -184,9 +221,21 @@ public class BossGame : MonoBehaviourPun, IGames
 
     public void OnPillarBroken()
     {
+        PhotonView pv = GetComponent<PhotonView>();
         if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            photonView.RPC("OnPillarBrokenRPC", RpcTarget.All);
+            if (pv != null && pv.ViewID > 0)
+            {
+                pv.RPC("OnPillarBrokenRPC", RpcTarget.All);
+            }
+            else
+            {
+                FirstPersonController localPlayer = FindLocalPlayer();
+                if (localPlayer != null)
+                {
+                    localPlayer.RouteBossPillarBroken();
+                }
+            }
         }
         else
         {
@@ -200,7 +249,7 @@ public class BossGame : MonoBehaviourPun, IGames
         OnPillarBrokenLocal();
     }
 
-    private void OnPillarBrokenLocal()
+    public void OnPillarBrokenLocal()
     {
         if (!gameStarted) return;
 
@@ -222,9 +271,21 @@ public class BossGame : MonoBehaviourPun, IGames
 
     public void LoseGame()
     {
+        PhotonView pv = GetComponent<PhotonView>();
         if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            photonView.RPC("LoseGameRPC", RpcTarget.All);
+            if (pv != null && pv.ViewID > 0)
+            {
+                pv.RPC("LoseGameRPC", RpcTarget.All);
+            }
+            else
+            {
+                FirstPersonController localPlayer = FindLocalPlayer();
+                if (localPlayer != null)
+                {
+                    localPlayer.RouteBossLoseGame();
+                }
+            }
         }
         else
         {
@@ -238,7 +299,7 @@ public class BossGame : MonoBehaviourPun, IGames
         LoseGameLocal();
     }
 
-    private void LoseGameLocal()
+    public void LoseGameLocal()
     {
         gameStarted = false;
         Debug.Log("[BossGame] All players inside arena died. Game Lost!");

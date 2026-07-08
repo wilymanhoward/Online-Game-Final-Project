@@ -206,6 +206,9 @@ MonoBehaviour:
   OnBothDeactivateEvent:
     m_PersistentCalls:
       m_Calls: []
+  activateClip: {fileID: 0}
+  deactivateClip: {fileID: 0}
+  volume: 1
 --- !u!23 &47744875
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -464,6 +467,9 @@ MonoBehaviour:
   onBothExit:
     m_PersistentCalls:
       m_Calls: []
+  crossClip: {fileID: 0}
+  exitClip: {fileID: 0}
+  volume: 1
 --- !u!65 &96353165
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -631,6 +637,9 @@ MonoBehaviour:
   OnBothDeactivateEvent:
     m_PersistentCalls:
       m_Calls: []
+  activateClip: {fileID: 0}
+  deactivateClip: {fileID: 0}
+  volume: 1
 --- !u!23 &175150401
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -753,6 +762,9 @@ MonoBehaviour:
   OnBothDeactivateEvent:
     m_PersistentCalls:
       m_Calls: []
+  activateClip: {fileID: 0}
+  deactivateClip: {fileID: 0}
+  volume: 1
 --- !u!1 &244372405
 GameObject:
   m_ObjectHideFlags: 0
@@ -1790,6 +1802,9 @@ MonoBehaviour:
   OnBothDeactivateEvent:
     m_PersistentCalls:
       m_Calls: []
+  activateClip: {fileID: 0}
+  deactivateClip: {fileID: 0}
+  volume: 1
 --- !u!23 &876386353
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -3888,6 +3903,9 @@ MonoBehaviour:
   onBothExit:
     m_PersistentCalls:
       m_Calls: []
+  crossClip: {fileID: 0}
+  exitClip: {fileID: 0}
+  volume: 1
 --- !u!65 &1203403697
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -4076,6 +4094,9 @@ MonoBehaviour:
   OnBothDeactivateEvent:
     m_PersistentCalls:
       m_Calls: []
+  activateClip: {fileID: 0}
+  deactivateClip: {fileID: 0}
+  volume: 1
 --- !u!65 &1300190631
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -4191,6 +4212,9 @@ MonoBehaviour:
   onBothExit:
     m_PersistentCalls:
       m_Calls: []
+  crossClip: {fileID: 0}
+  exitClip: {fileID: 0}
+  volume: 1
 --- !u!65 &1400731971
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -4313,6 +4337,9 @@ MonoBehaviour:
   OnBothDeactivateEvent:
     m_PersistentCalls:
       m_Calls: []
+  activateClip: {fileID: 0}
+  deactivateClip: {fileID: 0}
+  volume: 1
 --- !u!4 &1404623022
 Transform:
   m_ObjectHideFlags: 0
@@ -4695,7 +4722,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1532766344}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 19.26, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
