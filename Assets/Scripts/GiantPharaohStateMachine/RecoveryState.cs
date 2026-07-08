@@ -26,10 +26,37 @@ public class RecoveryState : IState
 
     public void Update()
     {
-        timer -= Time.deltaTime;
-        if (timer <= 0)
+        if (controller.Animator != null)
         {
-            controller.TransitionToState(EnemyStateMachineController.GiantState.Walk);
+            AnimatorStateInfo stateInfo = controller.Animator.GetCurrentAnimatorStateInfo(0);
+            bool isRecovery = stateInfo.IsName("Recovery");
+            bool inTransition = controller.Animator.IsInTransition(0);
+
+            if (isRecovery && !inTransition)
+            {
+                if (stateInfo.normalizedTime >= 1.0f)
+                {
+                    controller.TransitionToState(EnemyStateMachineController.GiantState.Walk);
+                }
+            }
+            else if (!isRecovery && !inTransition)
+            {
+                // Fallback if not currently in recovery state and not transitioning (e.g., animation config issues)
+                timer -= Time.deltaTime;
+                if (timer <= 0)
+                {
+                    controller.TransitionToState(EnemyStateMachineController.GiantState.Walk);
+                }
+            }
+        }
+        else
+        {
+            // Fallback if animator is null
+            timer -= Time.deltaTime;
+            if (timer <= 0)
+            {
+                controller.TransitionToState(EnemyStateMachineController.GiantState.Walk);
+            }
         }
     }
 

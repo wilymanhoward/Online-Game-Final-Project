@@ -22,6 +22,18 @@ public class AttackState : IState
         totalDuration = controller.GetAttackDuration(controller.CurrentAttack.animatorStateName);
         elapsed = 0f;
 
+        // Reset audio played states
+        if (controller.CurrentAttack.audioTriggers != null)
+        {
+            foreach (var audioTrigger in controller.CurrentAttack.audioTriggers)
+            {
+                if (audioTrigger != null)
+                {
+                    audioTrigger.hasPlayed = false;
+                }
+            }
+        }
+
         // Initialize object states
         UpdateAttackObjects(0f);
 
@@ -34,6 +46,7 @@ public class AttackState : IState
         elapsed += Time.deltaTime;
         float progress = Mathf.Clamp01(elapsed / totalDuration);
         UpdateAttackObjects(progress);
+        UpdateAttackAudio(progress);
     }
 
     public void FixedUpdate()
@@ -78,27 +91,46 @@ public class AttackState : IState
         }
     }
 
+    private void UpdateAttackAudio(float progress)
+    {
+        if (controller.CurrentAttack.audioTriggers != null)
+        {
+            foreach (var audioTrigger in controller.CurrentAttack.audioTriggers)
+            {
+                if (audioTrigger != null && !audioTrigger.hasPlayed && progress >= audioTrigger.playPercentage)
+                {
+                    audioTrigger.hasPlayed = true;
+                    PlayAudioTrigger(audioTrigger);
+                }
+            }
+        }
+    }
+
+    private void PlayAudioTrigger(EnemyStateMachineController.AttackAudioTrigger trigger)
+    {
+        if (trigger.audioClip == null) return;
+
+        if (controller.bossAudioSource != null)
+        {
+            controller.bossAudioSource.PlayOneShot(trigger.audioClip);
+        }
+        else
+        {
+            // Fallback: Play clip at boss position if no AudioSource is assigned
+            AudioSource.PlayClipAtPoint(trigger.audioClip, controller.transform.position);
+        }
+    }
+
     private IEnumerator ExecuteAttackRoutine()
     {
         string stateName = controller.CurrentAttack.animatorStateName;
 
-        if (stateName.Contains("Stomp") || stateName.Contains("stomp"))
+        if (controller.Animator != null)
         {
-            yield return controller.ExecuteStompAttackRoutine();
+            controller.Animator.CrossFadeInFixedTime(stateName, 0.15f);
         }
-        else if (stateName.Contains("Jump") || stateName.Contains("jump"))
-        {
-            yield return controller.ExecuteJumpAttackRoutine();
-        }
-        else
-        {
-            // Default fallback generic attack
-            if (controller.Animator != null)
-            {
-                controller.Animator.CrossFadeInFixedTime(stateName, 0.15f);
-            }
-            yield return new WaitForSeconds(1.5f);
-        }
+
+        yield return new WaitForSeconds(totalDuration);
 
         // Go back to Walk state
         controller.TransitionToState(EnemyStateMachineController.GiantState.Walk);
