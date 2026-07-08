@@ -24,6 +24,14 @@ public class Pillar : MonoBehaviourPun
         isBroken = !startRepaired;
     }
 
+    private void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Minus) || Input.GetKeyDown(KeyCode.KeypadMinus))
+        {
+            BreakPillar();
+        }
+    }
+
     private void OnTriggerEnter(Collider other)
     {
         CheckAndTrigger(other.gameObject);
