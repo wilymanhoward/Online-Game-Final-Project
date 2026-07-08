@@ -826,11 +826,17 @@ public class FirstPersonController : MonoBehaviourPun
         if (isPlacingTorch)
         {
             torchPlaceTimer -= Time.deltaTime;
-            if (torchPlaceTimer <= 0.3f && onTorchPlacedCallback != null)
+            if (torchPlaceTimer <= 0.3f)
             {
-                onTorchPlacedCallback.Invoke();
-                onTorchPlacedCallback = null;
-                SetHoldingTorch(false);
+                if (onTorchPlacedCallback != null)
+                {
+                    onTorchPlacedCallback.Invoke();
+                    onTorchPlacedCallback = null;
+                }
+                if (isHoldingTorch)
+                {
+                    SetHoldingTorch(false);
+                }
             }
             if (torchPlaceTimer <= 0f)
             {

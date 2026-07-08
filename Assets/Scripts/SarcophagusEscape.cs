@@ -161,8 +161,8 @@ public class SarcophagusEscape : MonoBehaviourPun
         PlayableDirector t1 = isForPlayer1 ? p1_Timeline1 : p2_Timeline1;
         PlayableDirector t2 = isForPlayer1 ? p1_Timeline2 : p2_Timeline2;
 
-        // 1. Play first timeline
-        if (t1 != null)
+        // 1. Play first timeline (Only on the client owning this sarcophagus)
+        if (isMySarcophagus && t1 != null)
         {
             t1.gameObject.SetActive(true);
             t1.Play();
@@ -237,8 +237,8 @@ public class SarcophagusEscape : MonoBehaviourPun
         // Optional small delay after lid pops off before playing audio
         yield return new WaitForSeconds(0.5f);
 
-        // 2. Play second timeline
-        if (t2 != null)
+        // 2. Play second timeline (Only on the client owning this sarcophagus)
+        if (isMySarcophagus && t2 != null)
         {
             t2.gameObject.SetActive(true);
             t2.Play();
