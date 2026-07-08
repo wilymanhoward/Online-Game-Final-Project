@@ -26,12 +26,27 @@ public class EnemyStateMachineController : MonoBehaviour
     }
 
     [System.Serializable]
+    public class AttackAudioTrigger
+    {
+        public AudioClip audioClip;
+        [Range(0f, 1f)]
+        public float playPercentage;
+
+        [System.NonSerialized]
+        public bool hasPlayed = false;
+    }
+
+    [System.Serializable]
     public struct EnemyAttack
     {
         public string animatorStateName;
         public float distanceToAttack;
         public AttackObjectTrigger[] objectsToActivate;
+        public AttackAudioTrigger[] audioTriggers;
     }
+
+    [Header("Audio Settings")]
+    public AudioSource bossAudioSource;
 
     [Header("State Info")]
     public GiantState currentStateEnum = GiantState.Idle;
@@ -335,65 +350,9 @@ public class EnemyStateMachineController : MonoBehaviour
         currentAttackTarget = null;
     }
 
-    public IEnumerator ExecuteStompAttackRoutine()
-    {
-        if (!baseRotCaptured) yield break;
 
-        currentAttackTarget = TargetPlayer;
-        if (animator != null) animator.SetFloat("Speed", 0f);
 
-        isStomping = true;
-        stompProgress = 0f;
 
-        float totalDuration = 1.3f;
-        float elapsed = 0f;
-        bool impactFired = false;
-
-        while (elapsed < totalDuration)
-        {
-            elapsed += Time.deltaTime;
-            stompProgress = Mathf.Clamp01(elapsed / totalDuration);
-
-            // Active tracking of the player rotation during the stomp (until 50%)
-            if (stompProgress < 0.5f && TargetPlayer != null)
-            {
-                Vector3 targetPos = TargetPlayer.transform.position;
-                targetPos.y = transform.position.y;
-
-                Vector3 dir = (targetPos - transform.position).normalized;
-                if (dir != Vector3.zero)
-                {
-                    transform.rotation = Quaternion.LookRotation(dir);
-                }
-            }
-
-            if (!impactFired && stompProgress >= 0.90f)
-            {
-                impactFired = true;
-                OnStompImpact();
-            }
-
-            yield return null;
-        }
-
-        isStomping = false;
-        currentAttackTarget = null;
-    }
-
-    public IEnumerator ExecuteJumpAttackRoutine()
-    {
-        if (!baseRotCaptured) yield break;
-
-        if (animator != null)
-        {
-            animator.SetFloat("Speed", 0f);
-            animator.CrossFadeInFixedTime("JumpAttack", 0.15f);
-        }
-
-        yield return new WaitForSeconds(0.85f);
-        OnJumpImpact();
-        yield return new WaitForSeconds(0.65f);
-    }
 
     public void ResetToSpawn()
     {
@@ -469,19 +428,6 @@ public class EnemyStateMachineController : MonoBehaviour
         Transform toes = FindDeepChild(transform, "Toes_R");
         if (toes != null)
         {
-            BoxCollider box = toes.gameObject.GetComponent<BoxCollider>();
-            if (box == null)
-            {
-                box = toes.gameObject.AddComponent<BoxCollider>();
-            }
-            box.isTrigger = true;
-
-            if (box.size == Vector3.one || box.size == Vector3.zero)
-            {
-                box.center = new Vector3(0f, 0f, 0.05f);
-                box.size = new Vector3(0.25f, 0.2f, 0.35f);
-            }
-
             PharaohFootTrigger footTrigger = toes.gameObject.GetComponent<PharaohFootTrigger>();
             if (footTrigger == null)
             {
@@ -679,12 +625,6 @@ public class EnemyStateMachineController : MonoBehaviour
             {
                 player.Respawn();
             }
-
-            if (distFromGiant < 50f)
-            {
-                float intensity = Mathf.Lerp(0.8f, 0.1f, distFromGiant / 50f);
-                player.TriggerCameraShake(0.6f, intensity);
-            }
         }
     }
 
@@ -698,18 +638,6 @@ public class EnemyStateMachineController : MonoBehaviour
             particlePos.y = transform.position.y + 0.1f;
             stompParticles.transform.position = particlePos;
             stompParticles.Play();
-        }
-
-        FirstPersonController[] players = FindObjectsOfType<FirstPersonController>();
-        foreach (var player in players)
-        {
-            float distFromGiant = Vector3.Distance(transform.position, player.transform.position);
-
-            if (distFromGiant < 40f)
-            {
-                float intensity = Mathf.Lerp(0.5f, 0.05f, distFromGiant / 40f);
-                player.TriggerCameraShake(0.4f, intensity);
-            }
         }
     }
 

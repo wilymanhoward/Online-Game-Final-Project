@@ -9,6 +9,7 @@ public class PlayerThrow : MonoBehaviourPun
     public float throwForce = 15f;
     public int trajectoryResolution = 30;
     public float trajectoryStepTime = 0.05f;
+    [SerializeField] private bool canThrow = true;
 
     [Header("References")]
     [SerializeField] private InputReader inputReader;
@@ -18,8 +19,6 @@ public class PlayerThrow : MonoBehaviourPun
     private Camera playerCamera;
     private Animator animator;
     private FirstPersonController fpc;
-
-    private bool isThrowingEnabled = true;
 
     private void Start()
     {
@@ -53,7 +52,7 @@ public class PlayerThrow : MonoBehaviourPun
         // Only run for the local player
         if (PhotonNetwork.IsConnected && photonView != null && !photonView.IsMine) return;
 
-        if (!isThrowingEnabled)
+        if (!canThrow)
         {
             // Make sure we cancel aiming if throwing gets disabled mid-aim
             if (fpc != null && fpc.isAiming)
@@ -68,7 +67,7 @@ public class PlayerThrow : MonoBehaviourPun
 
     public void SetThrowingEnabled(bool enabled)
     {
-        isThrowingEnabled = enabled;
+        canThrow = enabled;
         if (!enabled)
         {
             CancelAiming();
@@ -77,7 +76,7 @@ public class PlayerThrow : MonoBehaviourPun
 
     public bool IsThrowingEnabled()
     {
-        return isThrowingEnabled;
+        return canThrow;
     }
 
     private void CancelAiming()

@@ -1629,6 +1629,27 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!114 &-1405052496848419331
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1960600243022724894}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 63937499c6ddc75498e900561f6cd00e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  playerInteract: {fileID: 0}
+  normalColor: {r: 1, g: 1, b: 1, a: 1}
+  interactColor: {r: 0.9, g: 0.8, b: 0.1, a: 1}
+  transitionSpeed: 10
+  normalDotSize: 8
+  interactRingSize: 24
+  ringThickness: 3
+  customNormalSprite: {fileID: 0}
+  customInteractSprite: {fileID: 0}
 --- !u!114 &1396039304
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1642,7 +1663,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   BlindOverlay: {fileID: 0}
+  blindnessOpacity: 1
+  bandageCount: 4
   DeafOverlay: {fileID: 0}
+  deafLowPassCutoff: 800
+  deafVolumeMultiplier: 0.35
+  deafDistortionLevel: 0.85
+  deafFadeInDuration: 0.6
+  deafFadeOutDuration: 0.4
+  registeredDisability: 0
 --- !u!114 &1396039305
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1657,6 +1686,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   inputReader: {fileID: 11400000, guid: ad1b2d81c7197724e96bd9641c84ded0, type: 2}
   interactRange: 3
+  interactUI: {fileID: 0}
+  freezeUI: {fileID: 0}
 --- !u!114 &2019225598
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1681,16 +1712,28 @@ MonoBehaviour:
   vaultMaxDistance: 1.5
   vaultDuration: 0.6
   vaultPeakOffset: 0.5
-  throwablePrefabName: ThrowableRock
-  throwForce: 15
-  trajectoryResolution: 30
-  trajectoryStepTime: 0.05
+  isAiming: 0
   throwAnimDuration: 0.3
+  throwAnimTimer: 0
+  isThrowingAnim: 0
+  throwExitBlend: 0
+  throwExitDuration: 0.2
+  originalNearClip: 0.25
   cameraAimBlendSpeed: 8
   deathYThreshold: -100
   fatalAirTimeThreshold: 1
+  platformLayer:
+    serializedVersion: 2
+    m_Bits: 0
   inputReader: {fileID: 11400000, guid: ad1b2d81c7197724e96bd9641c84ded0, type: 2}
+  torchHoldShoulderEuler: {x: 105, y: 0, z: -20}
+  torchHoldElbowX: -45
+  torchHoldHandEuler: {x: 15, y: 0, z: 0}
+  torchPlaceShoulderEuler: {x: 75, y: 30, z: -5}
+  torchPlaceElbowX: -40
+  torchPlaceHandEuler: {x: 0, y: 0, z: 50}
   requiredClicksForRespawn: 5
+  isParalyzed: 0
 --- !u!114 &1744738266055515753
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1705,6 +1748,29 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   inputReader: {fileID: 11400000, guid: ad1b2d81c7197724e96bd9641c84ded0, type: 2}
   interactRange: 3
+  interactUI: {fileID: 0}
+  freezeUI: {fileID: 0}
+--- !u!114 &4038954111414933057
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1960600243022724894}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b5f0cae5c58a0641a3c503d5ae501e8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  footstepClip: {fileID: 0}
+  audioSource: {fileID: 0}
+  playMode: 0
+  volume: 0.8
+  randomizePitch: 1
+  pitchVariation: 0.08
+  walkStepInterval: 0.42
+  runStepInterval: 0.28
+  velocityThreshold: 0.8
 --- !u!114 &4464849368956533769
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1802,6 +1868,26 @@ MonoBehaviour:
   m_SynchronizeRotation: 1
   m_SynchronizeScale: 0
   m_UseLocal: 1
+--- !u!114 &2308517966446956912
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1960600243022724894}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0c2f5862d1ac2f14ea092d41773ee612, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  fadeSpeed: 8
+  defaultOpacity: 0.1
+  speakingOpacity: 1
+  textColor: {r: 1, g: 1, b: 1, a: 1}
+  nameplateOffset: {x: 0, y: 2.1, z: 0}
+  worldFontSize: 24
+  screenPosition: {x: 40, y: -80}
+  screenFontSize: 28
 --- !u!4 &2561459152093022638 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2423094504683107462, guid: 409fe45ed9f74884a8d917aecd144a87,

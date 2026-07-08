@@ -17,6 +17,8 @@ public class PlayerInteract : MonoBehaviour
     private bool isFrozen = false;
     private IInteractable currentInteractable = null;
 
+    public bool IsLookingAtInteractable { get; private set; }
+
     private void Awake()
     {
         // Safety: Remove duplicate components on the same GameObject to prevent double-interactions
@@ -85,6 +87,7 @@ public class PlayerInteract : MonoBehaviour
         {
             if (interactUI != null) interactUI.SetActive(false);
             if (freezeUI != null) freezeUI.SetActive(true);
+            IsLookingAtInteractable = false;
             return;
         }
 
@@ -92,6 +95,7 @@ public class PlayerInteract : MonoBehaviour
 
         IInteractable targetInteractable = GetTargetInteractable();
         bool showUI = (targetInteractable != null);
+        IsLookingAtInteractable = showUI;
 
         if (interactUI != null)
         {

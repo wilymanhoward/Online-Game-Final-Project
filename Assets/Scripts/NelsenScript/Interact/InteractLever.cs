@@ -23,6 +23,22 @@ public class InteractLever : MonoBehaviour, IInteractable
     public UnityEvent OnBothActivateEvent;
     public UnityEvent OnBothDeactivateEvent;
 
+    [Header("Audio Settings")]
+    [Tooltip("Audio clip to play when the lever is pulled/activated. If left empty, will load 0708(3) from Resources.")]
+    [SerializeField] private AudioClip activateClip;
+    [Tooltip("Audio clip to play when the lever is deactivated. (Optional)")]
+    [SerializeField] private AudioClip deactivateClip;
+    [Range(0f, 1f)]
+    [SerializeField] private float volume = 1f;
+
+    private void Awake()
+    {
+        if (activateClip == null)
+        {
+            activateClip = Resources.Load<AudioClip>("0708(3)");
+        }
+    }
+
     public void Interact()
     {
         if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
@@ -265,6 +281,7 @@ public class InteractLever : MonoBehaviour, IInteractable
         }
 
         OnBothActivateEvent?.Invoke();
+        PlaySound(activateClip);
 
         if (SecondLever != null)
         {
@@ -287,6 +304,7 @@ public class InteractLever : MonoBehaviour, IInteractable
     {
         isBothLeversActive = false;
         OnBothDeactivateEvent?.Invoke();
+        PlaySound(deactivateClip);
 
         if (SecondLever != null)
         {
@@ -366,6 +384,14 @@ public class InteractLever : MonoBehaviour, IInteractable
             }
             SecondLever.OnDeactivateEvent?.Invoke();
             SecondLever.OnBothDeactivateEvent?.Invoke();
+        }
+    }
+
+    private void PlaySound(AudioClip clip)
+    {
+        if (clip != null)
+        {
+            AudioSource.PlayClipAtPoint(clip, transform.position, volume);
         }
     }
 }
