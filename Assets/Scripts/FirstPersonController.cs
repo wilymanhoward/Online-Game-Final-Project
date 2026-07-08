@@ -1744,6 +1744,80 @@ public class FirstPersonController : MonoBehaviourPun
         }
     }
 
+    // --- Boss Game Routing ---
+    public void RouteBossStartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncBossStartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncBossStartGameRPC()
+    {
+        BossGame bg = FindObjectOfType<BossGame>();
+        if (bg != null)
+        {
+            bg.StartGameLocal();
+        }
+    }
+
+    public void RouteBossEndGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncBossEndGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncBossEndGameRPC()
+    {
+        BossGame bg = FindObjectOfType<BossGame>();
+        if (bg != null)
+        {
+            bg.EndGameLocal();
+        }
+    }
+
+    public void RouteBossPillarBroken()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncBossPillarBrokenRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncBossPillarBrokenRPC()
+    {
+        BossGame bg = FindObjectOfType<BossGame>();
+        if (bg != null)
+        {
+            bg.OnPillarBrokenLocal();
+        }
+    }
+
+    public void RouteBossLoseGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncBossLoseGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncBossLoseGameRPC()
+    {
+        BossGame bg = FindObjectOfType<BossGame>();
+        if (bg != null)
+        {
+            bg.LoseGameLocal();
+        }
+    }
+
+
     private string GetGameObjectPath(GameObject obj)
     {
         string path = obj.name;
