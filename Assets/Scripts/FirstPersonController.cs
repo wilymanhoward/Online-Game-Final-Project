@@ -1044,6 +1044,8 @@ public class FirstPersonController : MonoBehaviourPun
 
 
 
+    public Vector3 ActiveCheckpointPosition => activeCheckpointPosition;
+
     public void SetCheckpoint(Vector3 position)
     {
         activeCheckpointPosition = position;
