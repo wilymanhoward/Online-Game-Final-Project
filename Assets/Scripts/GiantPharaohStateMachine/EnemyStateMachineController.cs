@@ -322,10 +322,7 @@ public class EnemyStateMachineController : MonoBehaviour
 
     public void OnHitWall()
     {
-        if (currentStateEnum == GiantState.Fall)
-        {
-            TransitionToState(GiantState.Recovery);
-        }
+        // Transition to Recovery is disabled here so that the Fall animation completes fully instead.
     }
 
     public void SetHitboxActive(bool active)

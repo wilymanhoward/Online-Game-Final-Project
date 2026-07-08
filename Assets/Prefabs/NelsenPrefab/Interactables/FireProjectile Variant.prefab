@@ -147,6 +147,19 @@ MonoBehaviour:
   destroyOnContactLayers:
     serializedVersion: 2
     m_Bits: 1
+--- !u!135 &4187631067451836790
+SphereCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 645928673537447209}
+  m_Material: {fileID: 0}
+  m_IsTrigger: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.5
+  m_Center: {x: -0.09226608, y: 0.0655365, z: -0.088567734}
 --- !u!4 &5955825478197848738 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7807326414133103112, guid: a36c7faaa7442aa41b3bde30a5ad8f33,
