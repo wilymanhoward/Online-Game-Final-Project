@@ -1963,6 +1963,27 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0311e777fbb9e434ea84ca1725817ed5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &5556749393503488312
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6313460221604324054}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b5f0cae5c58a0641a3c503d5ae501e8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  footstepClip: {fileID: 0}
+  audioSource: {fileID: 0}
+  playMode: 0
+  volume: 0.8
+  randomizePitch: 1
+  pitchVariation: 0.08
+  walkStepInterval: 0.42
+  runStepInterval: 0.28
+  velocityThreshold: 0.8
 --- !u!114 &6170669211322511575
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2024,7 +2045,7 @@ MonoBehaviour:
   m_SynchronizeRotation: 1
   m_SynchronizeScale: 0
   m_UseLocal: 1
---- !u!114 &5556749393503488312
+--- !u!114 &-6142212833263608294
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -2033,18 +2054,18 @@ MonoBehaviour:
   m_GameObject: {fileID: 6313460221604324054}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2b5f0cae5c58a0641a3c503d5ae501e8, type: 3}
+  m_Script: {fileID: 11500000, guid: 63937499c6ddc75498e900561f6cd00e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  footstepClip: {fileID: 0}
-  audioSource: {fileID: 0}
-  playMode: 0
-  volume: 0.8
-  randomizePitch: 1
-  pitchVariation: 0.08
-  walkStepInterval: 0.42
-  runStepInterval: 0.28
-  velocityThreshold: 0.8
+  playerInteract: {fileID: 0}
+  normalColor: {r: 1, g: 1, b: 1, a: 1}
+  interactColor: {r: 0.9, g: 0.8, b: 0.1, a: 1}
+  transitionSpeed: 10
+  normalDotSize: 8
+  interactRingSize: 24
+  ringThickness: 3
+  customNormalSprite: {fileID: 0}
+  customInteractSprite: {fileID: 0}
 --- !u!4 &8008728968143082598 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2423094504683107462, guid: 409fe45ed9f74884a8d917aecd144a87,
