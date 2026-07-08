@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-5441952745042650402
+--- !u!114 &-7841953439074219294
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4f10dd60657c6004587f237a7e90f8e4, type: 3}
   m_Name: AudioPlayableAsset
   m_EditorClassIdentifier: 
-  m_Clip: {fileID: 8300000, guid: d55f66708931652469275d9f77c0bdb7, type: 3}
+  m_Clip: {fileID: 8300000, guid: 403259fffcbf2b949b523289f0e31ffc, type: 3}
   m_Loop: 0
   m_bufferingTime: 0.1
   m_ClipProperties:
@@ -52,9 +52,9 @@ MonoBehaviour:
   m_Clips:
   - m_Version: 1
     m_Start: 0
-    m_ClipIn: 0
-    m_Asset: {fileID: -5441952745042650402}
-    m_Duration: 10.4
+    m_ClipIn: 0.19999999999999996
+    m_Asset: {fileID: -7841953439074219294}
+    m_Duration: 7.933333333333334
     m_TimeScale: 1
     m_ParentTrack: {fileID: -2047358905112772636}
     m_EaseInDuration: 0
@@ -118,7 +118,7 @@ MonoBehaviour:
     m_PreExtrapolationMode: 0
     m_PostExtrapolationTime: 0
     m_PreExtrapolationTime: 0
-    m_DisplayName: HINT1
+    m_DisplayName: HINT4
   m_Markers:
     m_Objects: []
   m_TrackProperties:
@@ -170,10 +170,10 @@ MonoBehaviour:
   m_Children: []
   m_Clips:
   - m_Version: 1
-    m_Start: 4.383333333333334
+    m_Start: 3.5
     m_ClipIn: 0
     m_Asset: {fileID: -3445806695771736352}
-    m_Duration: 5.45
+    m_Duration: 4.1
     m_TimeScale: 1
     m_ParentTrack: {fileID: 1837864299058745306}
     m_EaseInDuration: 0
@@ -278,7 +278,7 @@ MonoBehaviour:
     m_Start: 0
     m_ClipIn: 0
     m_Asset: {fileID: 4913497537886705684}
-    m_Duration: 4.383333333333334
+    m_Duration: 3.5
     m_TimeScale: 1
     m_ParentTrack: {fileID: 5758955547676214976}
     m_EaseInDuration: 0
