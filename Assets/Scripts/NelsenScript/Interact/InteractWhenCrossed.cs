@@ -25,6 +25,14 @@ public class InteractWhenCrossed : MonoBehaviour
     [SerializeField] private PlayerCrossedEvent onBothCross;
     [SerializeField] private PlayerCrossedEvent onBothExit;
 
+    [Header("Audio Settings")]
+    [Tooltip("Audio clip to play when the trigger condition is met. If left empty, will load 0708(2) from Resources.")]
+    [SerializeField] private AudioClip crossClip;
+    [Tooltip("Audio clip to play when the player exits. (Optional)")]
+    [SerializeField] private AudioClip exitClip;
+    [Range(0f, 1f)]
+    [SerializeField] private float volume = 1f;
+
     private bool isActivated = false;
     private bool isOnePlayerActive = false;
     private bool isBothPlayersActive = false;
@@ -38,6 +46,11 @@ public class InteractWhenCrossed : MonoBehaviour
 
     private void Start()
     {
+        if (crossClip == null)
+        {
+            crossClip = Resources.Load<AudioClip>("0708(2)");
+        }
+
         Collider ownCollider = GetComponent<Collider>();
         if (ownCollider != null)
         {
@@ -177,6 +190,7 @@ public class InteractWhenCrossed : MonoBehaviour
                 {
                     hasTriggeredOnePlayer = true;
                     onCross?.Invoke(player);
+                    PlaySound(crossClip);
                 }
             }
 
@@ -214,6 +228,7 @@ public class InteractWhenCrossed : MonoBehaviour
                 isOnePlayerActive = false;
                 isActivated = false;
                 onExit?.Invoke(player);
+                PlaySound(exitClip);
             }
 
             // 2. Both plates deactivation condition met (if secondTrigger is assigned)
@@ -276,6 +291,14 @@ public class InteractWhenCrossed : MonoBehaviour
         hasTriggeredOnePlayer = false;
         hasTriggeredBothPlayers = false;
         playersInside.Clear();
+    }
+
+    private void PlaySound(AudioClip clip)
+    {
+        if (clip != null)
+        {
+            AudioSource.PlayClipAtPoint(clip, transform.position, volume);
+        }
     }
 }
 
