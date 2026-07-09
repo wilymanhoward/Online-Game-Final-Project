@@ -70,6 +70,7 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
     private Vector3 playerStone2Scale;
 
     private string pendingRoomToJoin = "";
+    private bool pendingCreateRoom = false;
     private bool isStartingGame = false;
     private Coroutine cutsceneCoroutine;
     private bool isCutscenePlaying = false;
@@ -226,9 +227,24 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
     {
         PlayClickSound();
 
+        // If Photon hasn't finished connecting yet, queue the room creation instead of
+        // calling CreateRoom while not ready (which Photon silently drops - no callback
+        // ever fires, so the UI would get stuck on this panel).
+        if (!PhotonNetwork.IsConnectedAndReady)
+        {
+            pendingCreateRoom = true;
+            if (headerText != null) headerText.text = "Connecting...";
+            return;
+        }
+
+        CreateGameRoom();
+    }
+
+    private void CreateGameRoom()
+    {
         // 1. Generate a random 5-digit room ID/code
         string roomCode = Random.Range(10000, 99999).ToString();
-        
+
         // 2. Set the header to show the room ID/code
         if (headerText != null)
         {
@@ -238,7 +254,7 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
         // 3. Create the Photon room
         RoomOptions roomOptions = new RoomOptions { MaxPlayers = 2 };
         PhotonNetwork.CreateRoom(roomCode, roomOptions);
-        
+
         // We do NOT call StartTransition here because OnJoinedRoom will be triggered automatically
         // and handle the transition to Panel (5), preventing the UI flicker/lag.
     }
@@ -399,7 +415,12 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
 
     public override void OnConnectedToMaster()
     {
-        if (!string.IsNullOrEmpty(pendingRoomToJoin))
+        if (pendingCreateRoom)
+        {
+            pendingCreateRoom = false;
+            CreateGameRoom();
+        }
+        else if (!string.IsNullOrEmpty(pendingRoomToJoin))
         {
             string roomToJoin = pendingRoomToJoin;
             pendingRoomToJoin = "";
@@ -555,20 +576,21 @@ public class Cel_MainMenu : MonoBehaviourPunCallbacks
             blackScreenObject.SetActive(false);
         }
 
-        // 4. Wait for the rest of the cutscene to finish naturally
+        // 4. Wait for the rest of the cutscene, minus the time needed for the outbound
+        // fade-to-black (step 5) so that fade overlaps the tail end of the cutscene
+        // and reaches full black right as the timeline naturally ends, instead of after.
         if (startTimeline != null)
         {
             Debug.Log("[Transition] Waiting for timeline to finish...");
-            // Subtract the fade-in duration since the timeline was already playing during it
-            float remainingTime = (float)startTimeline.duration - fadeDuration;
+            float remainingTime = (float)startTimeline.duration - fadeDuration - fadeDuration;
             if (remainingTime > 0f)
             {
                 yield return new WaitForSeconds(remainingTime);
             }
-            Debug.Log("[Transition] Timeline finished naturally.");
+            Debug.Log("[Transition] Timeline nearing end, starting fade to black.");
         }
 
-        // 5. Fade to black again before loading, so the scene load/spawn gap is hidden
+        // 5. Fade to black before loading, so the scene load/spawn gap is hidden
         if (blackScreenObject != null)
         {
             Debug.Log("[Transition] Fading to black before scene load...");

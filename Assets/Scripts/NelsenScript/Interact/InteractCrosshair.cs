@@ -1,11 +1,13 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Playables;
 
 public class InteractCrosshair : MonoBehaviour
 {
     [Header("References")]
     [Tooltip("The PlayerInteract script to monitor. If left empty, will try to find it on the local player.")]
     [SerializeField] private PlayerInteract playerInteract;
+    private FirstPersonController fpc;
 
     [Header("Crosshair Customization")]
     [SerializeField] private Color normalColor = Color.white;
@@ -28,11 +30,12 @@ public class InteractCrosshair : MonoBehaviour
     private Image ringImage;
 
     private float currentTransition = 0f; // 0 = Normal (Dot), 1 = Interactable (Ring)
+    private bool anyDirectorPlaying = false;
 
     private void Awake()
     {
         // Safety check for multiplayer: only run on local player
-        FirstPersonController fpc = GetComponentInParent<FirstPersonController>();
+        fpc = GetComponentInParent<FirstPersonController>();
         if (fpc != null && !fpc.IsLocalPlayer)
         {
             Destroy(this);
@@ -46,6 +49,7 @@ public class InteractCrosshair : MonoBehaviour
         }
 
         CreateCrosshairUI();
+        SubscribeToExistingDirectors();
     }
 
     private void Start()
@@ -54,8 +58,54 @@ public class InteractCrosshair : MonoBehaviour
         UpdateCrosshairVisuals(0f);
     }
 
+    private void OnDestroy()
+    {
+        PlayableDirector[] directors = FindObjectsOfType<PlayableDirector>();
+        for (int i = 0; i < directors.Length; i++)
+        {
+            directors[i].played -= OnAnyDirectorPlayed;
+            directors[i].stopped -= OnAnyDirectorStopped;
+        }
+    }
+
+    private void SubscribeToExistingDirectors()
+    {
+        // Subscribe to every PlayableDirector already in the scene (e.g. the Ending1/EndingCutscene
+        // director in Puzzle1) so the crosshair hides the instant Play() is called, instead of
+        // waiting up to a frame for the Update() poll below to notice.
+        PlayableDirector[] directors = FindObjectsOfType<PlayableDirector>();
+        for (int i = 0; i < directors.Length; i++)
+        {
+            directors[i].played -= OnAnyDirectorPlayed; // safety unsubscribe first
+            directors[i].played += OnAnyDirectorPlayed;
+            directors[i].stopped -= OnAnyDirectorStopped;
+            directors[i].stopped += OnAnyDirectorStopped;
+
+            if (directors[i].state == PlayState.Playing) anyDirectorPlaying = true;
+        }
+    }
+
+    private void OnAnyDirectorPlayed(PlayableDirector director)
+    {
+        anyDirectorPlaying = true;
+        SetCrosshairVisible(false);
+    }
+
+    private void OnAnyDirectorStopped(PlayableDirector director)
+    {
+        anyDirectorPlaying = IsAnyDirectorPlaying();
+    }
+
     private void Update()
     {
+        // Hide the crosshair entirely while a cutscene has the player paralyzed
+        // or any Timeline (CinematicController, SarcophagusEscape, Ending1/EndingCutscene, etc.) is playing.
+        // anyDirectorPlaying is set instantly via the played/stopped events above; IsAnyDirectorPlaying()
+        // is a fallback poll that also catches directors created after Awake (e.g. per-player timelines).
+        bool isCutscenePlaying = (fpc != null && fpc.isParalyzed) || anyDirectorPlaying || IsAnyDirectorPlaying();
+        SetCrosshairVisible(!isCutscenePlaying);
+        if (isCutscenePlaying) return;
+
         if (playerInteract == null)
         {
             FindLocalPlayerInteract();
@@ -64,11 +114,27 @@ public class InteractCrosshair : MonoBehaviour
 
         // Target transition state
         float targetTransition = playerInteract.IsLookingAtInteractable ? 1f : 0f;
-        
+
         // Smoothly interpolate
         currentTransition = Mathf.MoveTowards(currentTransition, targetTransition, Time.deltaTime * transitionSpeed);
 
         UpdateCrosshairVisuals(currentTransition);
+    }
+
+    private void SetCrosshairVisible(bool visible)
+    {
+        if (dotImage != null) dotImage.enabled = visible;
+        if (ringImage != null) ringImage.enabled = visible;
+    }
+
+    private static bool IsAnyDirectorPlaying()
+    {
+        PlayableDirector[] directors = FindObjectsOfType<PlayableDirector>();
+        for (int i = 0; i < directors.Length; i++)
+        {
+            if (directors[i].state == PlayState.Playing) return true;
+        }
+        return false;
     }
 
     private void FindLocalPlayerInteract()
