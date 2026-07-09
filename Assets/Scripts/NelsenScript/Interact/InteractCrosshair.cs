@@ -1,11 +1,13 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Playables;
 
 public class InteractCrosshair : MonoBehaviour
 {
     [Header("References")]
     [Tooltip("The PlayerInteract script to monitor. If left empty, will try to find it on the local player.")]
     [SerializeField] private PlayerInteract playerInteract;
+    private FirstPersonController fpc;
 
     [Header("Crosshair Customization")]
     [SerializeField] private Color normalColor = Color.white;
@@ -29,10 +31,14 @@ public class InteractCrosshair : MonoBehaviour
 
     private float currentTransition = 0f; // 0 = Normal (Dot), 1 = Interactable (Ring)
 
+    private const string EndingDirectorObjectName = "Ending1";
+    private PlayableDirector endingDirector;
+    private bool endingCutscenePlaying = false;
+
     private void Awake()
     {
         // Safety check for multiplayer: only run on local player
-        FirstPersonController fpc = GetComponentInParent<FirstPersonController>();
+        fpc = GetComponentInParent<FirstPersonController>();
         if (fpc != null && !fpc.IsLocalPlayer)
         {
             Destroy(this);
@@ -46,6 +52,7 @@ public class InteractCrosshair : MonoBehaviour
         }
 
         CreateCrosshairUI();
+        SubscribeToEndingDirector();
     }
 
     private void Start()
@@ -54,8 +61,51 @@ public class InteractCrosshair : MonoBehaviour
         UpdateCrosshairVisuals(0f);
     }
 
+    private void OnDestroy()
+    {
+        if (endingDirector != null)
+        {
+            endingDirector.played -= OnEndingDirectorPlayed;
+            endingDirector.stopped -= OnEndingDirectorStopped;
+        }
+    }
+
+    private void SubscribeToEndingDirector()
+    {
+        // Only the Ending1 director (plays EndingCutscene.playable) should hide the crosshair.
+        GameObject directorObj = GameObject.Find(EndingDirectorObjectName);
+        endingDirector = directorObj != null ? directorObj.GetComponent<PlayableDirector>() : null;
+        if (endingDirector == null) return;
+
+        endingDirector.played -= OnEndingDirectorPlayed; // safety unsubscribe first
+        endingDirector.played += OnEndingDirectorPlayed;
+        endingDirector.stopped -= OnEndingDirectorStopped;
+        endingDirector.stopped += OnEndingDirectorStopped;
+
+        endingCutscenePlaying = endingDirector.state == PlayState.Playing;
+    }
+
+    private void OnEndingDirectorPlayed(PlayableDirector director)
+    {
+        endingCutscenePlaying = true;
+        SetCrosshairVisible(false);
+    }
+
+    private void OnEndingDirectorStopped(PlayableDirector director)
+    {
+        endingCutscenePlaying = false;
+    }
+
     private void Update()
     {
+        // Hide the crosshair only while the Ending1/EndingCutscene timeline is playing.
+        if (endingDirector == null) SubscribeToEndingDirector();
+        if (endingCutscenePlaying)
+        {
+            SetCrosshairVisible(false);
+            return;
+        }
+
         if (playerInteract == null)
         {
             FindLocalPlayerInteract();
@@ -64,11 +114,17 @@ public class InteractCrosshair : MonoBehaviour
 
         // Target transition state
         float targetTransition = playerInteract.IsLookingAtInteractable ? 1f : 0f;
-        
+
         // Smoothly interpolate
         currentTransition = Mathf.MoveTowards(currentTransition, targetTransition, Time.deltaTime * transitionSpeed);
 
         UpdateCrosshairVisuals(currentTransition);
+    }
+
+    private void SetCrosshairVisible(bool visible)
+    {
+        if (dotImage != null) dotImage.enabled = visible;
+        if (ringImage != null) ringImage.enabled = visible;
     }
 
     private void FindLocalPlayerInteract()
@@ -143,11 +199,14 @@ public class InteractCrosshair : MonoBehaviour
         float dotScale = 1f - transition;
         dotImage.rectTransform.localScale = new Vector3(dotScale, dotScale, 1f);
         dotImage.color = new Color(currentColor.r, currentColor.g, currentColor.b, 1f - transition);
+        // Fully disable once faded out so no remnant renders once the ring is fully expanded
+        dotImage.enabled = transition < 0.999f;
 
         // Ring transition (grows and fades in as transition goes 0 -> 1)
         float ringScale = transition;
         ringImage.rectTransform.localScale = new Vector3(ringScale, ringScale, 1f);
         ringImage.color = new Color(currentColor.r, currentColor.g, currentColor.b, transition);
+        ringImage.enabled = transition > 0.001f;
     }
 
     private Sprite CreateDotSprite()
