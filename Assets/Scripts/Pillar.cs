@@ -1,8 +1,10 @@
 using UnityEngine;
 using UnityEngine.Events;
 using Photon.Pun;
+using ExitGames.Client.Photon;
+using Photon.Realtime;
 
-public class Pillar : MonoBehaviourPun
+public class Pillar : MonoBehaviourPun, IOnEventCallback
 {
     [Header("Settings")]
     [Tooltip("The tag required to trigger the event. Default is 'Hitwall'.")]
@@ -19,9 +21,22 @@ public class Pillar : MonoBehaviourPun
 
     public bool IsBroken => isBroken;
 
+    private const byte BreakPillarEventCode = 101;
+    private const byte RepairPillarEventCode = 102;
+
     private void Start()
     {
         isBroken = !startRepaired;
+    }
+
+    private void OnEnable()
+    {
+        PhotonNetwork.AddCallbackTarget(this);
+    }
+
+    private void OnDisable()
+    {
+        PhotonNetwork.RemoveCallbackTarget(this);
     }
 
     private void Update()
@@ -56,16 +71,24 @@ public class Pillar : MonoBehaviourPun
     }
 
     /// <summary>
-    /// Breaks the pillar. Can be called locally or synced via RPC if PhotonView is attached.
+    /// Breaks the pillar. Can be called locally or synced via custom event/RPC.
     /// </summary>
     public void BreakPillar()
     {
         if (isBroken) return;
 
         PhotonView pv = GetComponent<PhotonView>();
-        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom && pv != null && pv.ViewID > 0)
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            pv.RPC("SyncBreakRPC", RpcTarget.All);
+            if (pv != null && pv.ViewID > 0)
+            {
+                pv.RPC("SyncBreakRPC", RpcTarget.All);
+            }
+            else
+            {
+                RaiseEventOptions raiseEventOptions = new RaiseEventOptions { Receivers = ReceiverGroup.All };
+                PhotonNetwork.RaiseEvent(BreakPillarEventCode, gameObject.name, raiseEventOptions, SendOptions.SendReliable);
+            }
         }
         else
         {
@@ -81,9 +104,17 @@ public class Pillar : MonoBehaviourPun
         if (!isBroken) return;
 
         PhotonView pv = GetComponent<PhotonView>();
-        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom && pv != null && pv.ViewID > 0)
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            pv.RPC("SyncRepairRPC", RpcTarget.All);
+            if (pv != null && pv.ViewID > 0)
+            {
+                pv.RPC("SyncRepairRPC", RpcTarget.All);
+            }
+            else
+            {
+                RaiseEventOptions raiseEventOptions = new RaiseEventOptions { Receivers = ReceiverGroup.All };
+                PhotonNetwork.RaiseEvent(RepairPillarEventCode, gameObject.name, raiseEventOptions, SendOptions.SendReliable);
+            }
         }
         else
         {
@@ -103,7 +134,7 @@ public class Pillar : MonoBehaviourPun
         RepairPillarLocal();
     }
 
-    private void BreakPillarLocal()
+    public void BreakPillarLocal()
     {
         if (isBroken) return;
         isBroken = true;
@@ -111,11 +142,31 @@ public class Pillar : MonoBehaviourPun
         onBreak?.Invoke();
     }
 
-    private void RepairPillarLocal()
+    public void RepairPillarLocal()
     {
         if (!isBroken) return;
         isBroken = false;
         Debug.Log($"[Pillar] Repaired: {gameObject.name}");
         onRepair?.Invoke();
+    }
+
+    public void OnEvent(EventData photonEvent)
+    {
+        if (photonEvent.Code == BreakPillarEventCode)
+        {
+            string pillarName = (string)photonEvent.CustomData;
+            if (gameObject.name == pillarName)
+            {
+                BreakPillarLocal();
+            }
+        }
+        else if (photonEvent.Code == RepairPillarEventCode)
+        {
+            string pillarName = (string)photonEvent.CustomData;
+            if (gameObject.name == pillarName)
+            {
+                RepairPillarLocal();
+            }
+        }
     }
 }

@@ -17,7 +17,8 @@ public class BossGame : MonoBehaviourPun, IGames
     [SerializeField] private UnityEvent OnGameWonEvent = new UnityEvent();
     [SerializeField] private UnityEvent OnGameLostEvent = new UnityEvent();
 
-    private int pillarsBrokenCount = 0;
+    [SerializeField] private int totalPillarsToBreak = 8;
+    [SerializeField] private int pillarsBrokenCount = 0;
     private bool gameStarted = false;
 
     private List<FirstPersonController> playersInArena = new List<FirstPersonController>();
@@ -221,26 +222,7 @@ public class BossGame : MonoBehaviourPun, IGames
 
     public void OnPillarBroken()
     {
-        PhotonView pv = GetComponent<PhotonView>();
-        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
-        {
-            if (pv != null && pv.ViewID > 0)
-            {
-                pv.RPC("OnPillarBrokenRPC", RpcTarget.All);
-            }
-            else
-            {
-                FirstPersonController localPlayer = FindLocalPlayer();
-                if (localPlayer != null)
-                {
-                    localPlayer.RouteBossPillarBroken();
-                }
-            }
-        }
-        else
-        {
-            OnPillarBrokenLocal();
-        }
+        OnPillarBrokenLocal();
     }
 
     [PunRPC]
@@ -256,7 +238,7 @@ public class BossGame : MonoBehaviourPun, IGames
         pillarsBrokenCount++;
         Debug.Log($"[BossGame] Pillar broken! Total broken: {pillarsBrokenCount}/6");
 
-        if (pillarsBrokenCount >= 6)
+        if (pillarsBrokenCount >= totalPillarsToBreak)
         {
             WinGame();
         }
