@@ -30,7 +30,10 @@ public class InteractCrosshair : MonoBehaviour
     private Image ringImage;
 
     private float currentTransition = 0f; // 0 = Normal (Dot), 1 = Interactable (Ring)
-    private bool anyDirectorPlaying = false;
+
+    private const string EndingDirectorObjectName = "Ending1";
+    private PlayableDirector endingDirector;
+    private bool endingCutscenePlaying = false;
 
     private void Awake()
     {
@@ -49,7 +52,7 @@ public class InteractCrosshair : MonoBehaviour
         }
 
         CreateCrosshairUI();
-        SubscribeToExistingDirectors();
+        SubscribeToEndingDirector();
     }
 
     private void Start()
@@ -60,51 +63,48 @@ public class InteractCrosshair : MonoBehaviour
 
     private void OnDestroy()
     {
-        PlayableDirector[] directors = FindObjectsOfType<PlayableDirector>();
-        for (int i = 0; i < directors.Length; i++)
+        if (endingDirector != null)
         {
-            directors[i].played -= OnAnyDirectorPlayed;
-            directors[i].stopped -= OnAnyDirectorStopped;
+            endingDirector.played -= OnEndingDirectorPlayed;
+            endingDirector.stopped -= OnEndingDirectorStopped;
         }
     }
 
-    private void SubscribeToExistingDirectors()
+    private void SubscribeToEndingDirector()
     {
-        // Subscribe to every PlayableDirector already in the scene (e.g. the Ending1/EndingCutscene
-        // director in Puzzle1) so the crosshair hides the instant Play() is called, instead of
-        // waiting up to a frame for the Update() poll below to notice.
-        PlayableDirector[] directors = FindObjectsOfType<PlayableDirector>();
-        for (int i = 0; i < directors.Length; i++)
-        {
-            directors[i].played -= OnAnyDirectorPlayed; // safety unsubscribe first
-            directors[i].played += OnAnyDirectorPlayed;
-            directors[i].stopped -= OnAnyDirectorStopped;
-            directors[i].stopped += OnAnyDirectorStopped;
+        // Only the Ending1 director (plays EndingCutscene.playable) should hide the crosshair.
+        GameObject directorObj = GameObject.Find(EndingDirectorObjectName);
+        endingDirector = directorObj != null ? directorObj.GetComponent<PlayableDirector>() : null;
+        if (endingDirector == null) return;
 
-            if (directors[i].state == PlayState.Playing) anyDirectorPlaying = true;
-        }
+        endingDirector.played -= OnEndingDirectorPlayed; // safety unsubscribe first
+        endingDirector.played += OnEndingDirectorPlayed;
+        endingDirector.stopped -= OnEndingDirectorStopped;
+        endingDirector.stopped += OnEndingDirectorStopped;
+
+        endingCutscenePlaying = endingDirector.state == PlayState.Playing;
     }
 
-    private void OnAnyDirectorPlayed(PlayableDirector director)
+    private void OnEndingDirectorPlayed(PlayableDirector director)
     {
-        anyDirectorPlaying = true;
+        endingCutscenePlaying = true;
         SetCrosshairVisible(false);
     }
 
-    private void OnAnyDirectorStopped(PlayableDirector director)
+    private void OnEndingDirectorStopped(PlayableDirector director)
     {
-        anyDirectorPlaying = IsAnyDirectorPlaying();
+        endingCutscenePlaying = false;
     }
 
     private void Update()
     {
-        // Hide the crosshair entirely while a cutscene has the player paralyzed
-        // or any Timeline (CinematicController, SarcophagusEscape, Ending1/EndingCutscene, etc.) is playing.
-        // anyDirectorPlaying is set instantly via the played/stopped events above; IsAnyDirectorPlaying()
-        // is a fallback poll that also catches directors created after Awake (e.g. per-player timelines).
-        bool isCutscenePlaying = (fpc != null && fpc.isParalyzed) || anyDirectorPlaying || IsAnyDirectorPlaying();
-        SetCrosshairVisible(!isCutscenePlaying);
-        if (isCutscenePlaying) return;
+        // Hide the crosshair only while the Ending1/EndingCutscene timeline is playing.
+        if (endingDirector == null) SubscribeToEndingDirector();
+        if (endingCutscenePlaying)
+        {
+            SetCrosshairVisible(false);
+            return;
+        }
 
         if (playerInteract == null)
         {
@@ -125,16 +125,6 @@ public class InteractCrosshair : MonoBehaviour
     {
         if (dotImage != null) dotImage.enabled = visible;
         if (ringImage != null) ringImage.enabled = visible;
-    }
-
-    private static bool IsAnyDirectorPlaying()
-    {
-        PlayableDirector[] directors = FindObjectsOfType<PlayableDirector>();
-        for (int i = 0; i < directors.Length; i++)
-        {
-            if (directors[i].state == PlayState.Playing) return true;
-        }
-        return false;
     }
 
     private void FindLocalPlayerInteract()
@@ -209,11 +199,14 @@ public class InteractCrosshair : MonoBehaviour
         float dotScale = 1f - transition;
         dotImage.rectTransform.localScale = new Vector3(dotScale, dotScale, 1f);
         dotImage.color = new Color(currentColor.r, currentColor.g, currentColor.b, 1f - transition);
+        // Fully disable once faded out so no remnant renders once the ring is fully expanded
+        dotImage.enabled = transition < 0.999f;
 
         // Ring transition (grows and fades in as transition goes 0 -> 1)
         float ringScale = transition;
         ringImage.rectTransform.localScale = new Vector3(ringScale, ringScale, 1f);
         ringImage.color = new Color(currentColor.r, currentColor.g, currentColor.b, transition);
+        ringImage.enabled = transition > 0.001f;
     }
 
     private Sprite CreateDotSprite()
