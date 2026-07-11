@@ -1044,6 +1044,8 @@ public class FirstPersonController : MonoBehaviourPun
 
 
 
+    public Vector3 ActiveCheckpointPosition => activeCheckpointPosition;
+
     public void SetCheckpoint(Vector3 position)
     {
         activeCheckpointPosition = position;
@@ -1370,21 +1372,33 @@ public class FirstPersonController : MonoBehaviourPun
         }
     }
 
-    public void RouteRedLightShoot(Vector3 spawnPos, Vector3 direction)
+    public void RouteRedLightShoot(string shooterPath, Vector3 spawnPos, Vector3 direction)
     {
         if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
-            photonView.RPC("SpawnRedLightProjectileRPC", RpcTarget.All, spawnPos, direction);
+            photonView.RPC("SpawnRedLightProjectileRPC", RpcTarget.All, shooterPath, spawnPos, direction);
         }
     }
 
     [PunRPC]
-    private void SpawnRedLightProjectileRPC(Vector3 spawnPos, Vector3 direction)
+    private void SpawnRedLightProjectileRPC(string shooterPath, Vector3 spawnPos, Vector3 direction)
     {
-        RedLightShooter shooter = FindObjectOfType<RedLightShooter>();
-        if (shooter != null)
+        GameObject go = GameObject.Find(shooterPath);
+        if (go != null)
         {
-            shooter.SpawnProjectileLocal(spawnPos, direction);
+            RedLightShooter shooter = go.GetComponent<RedLightShooter>();
+            if (shooter != null)
+            {
+                shooter.SpawnProjectileLocal(spawnPos, direction);
+            }
+        }
+        else
+        {
+            RedLightShooter shooter = FindObjectOfType<RedLightShooter>();
+            if (shooter != null)
+            {
+                shooter.SpawnProjectileLocal(spawnPos, direction);
+            }
         }
     }
 
@@ -1729,6 +1743,80 @@ public class FirstPersonController : MonoBehaviourPun
             rl.PlayWarningLocal();
         }
     }
+
+    // --- Boss Game Routing ---
+    public void RouteBossStartGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncBossStartGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncBossStartGameRPC()
+    {
+        BossGame bg = FindObjectOfType<BossGame>();
+        if (bg != null)
+        {
+            bg.StartGameLocal();
+        }
+    }
+
+    public void RouteBossEndGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncBossEndGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncBossEndGameRPC()
+    {
+        BossGame bg = FindObjectOfType<BossGame>();
+        if (bg != null)
+        {
+            bg.EndGameLocal();
+        }
+    }
+
+    public void RouteBossPillarBroken()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncBossPillarBrokenRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncBossPillarBrokenRPC()
+    {
+        BossGame bg = FindObjectOfType<BossGame>();
+        if (bg != null)
+        {
+            bg.OnPillarBrokenLocal();
+        }
+    }
+
+    public void RouteBossLoseGame()
+    {
+        if (photonView != null && photonView.IsMine && PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+        {
+            photonView.RPC("SyncBossLoseGameRPC", RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void SyncBossLoseGameRPC()
+    {
+        BossGame bg = FindObjectOfType<BossGame>();
+        if (bg != null)
+        {
+            bg.LoseGameLocal();
+        }
+    }
+
 
     private string GetGameObjectPath(GameObject obj)
     {

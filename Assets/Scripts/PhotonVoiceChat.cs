@@ -29,6 +29,10 @@ public class PhotonVoiceChat : MonoBehaviourPun
 
     // Toggle Voice Chat states
     private bool isMicEnabled = true;
+    public bool IsMicEnabled => isMicEnabled;
+
+    public bool IsSpeaking { get; private set; }
+    private float lastSpeakingTime = 0f;
 
     private bool wasMine = false;
     private bool isInitialized = false;
@@ -109,6 +113,23 @@ public class PhotonVoiceChat : MonoBehaviourPun
                 // Only accumulate and transmit samples if the microphone is not muted
                 if (isMicEnabled)
                 {
+                    // Calculate RMS of input samples to detect speaking state
+                    float sum = 0f;
+                    for (int i = 0; i < samples.Length; i++)
+                    {
+                        sum += samples[i] * samples[i];
+                    }
+                    float rms = Mathf.Sqrt(sum / samples.Length);
+                    if (rms > 0.005f)
+                    {
+                        IsSpeaking = true;
+                        lastSpeakingTime = Time.time;
+                    }
+                    else if (Time.time - lastSpeakingTime > 0.3f)
+                    {
+                        IsSpeaking = false;
+                    }
+
                     micAccumulator.AddRange(samples);
 
                     while (micAccumulator.Count >= SEND_CHUNK_SIZE)
@@ -121,12 +142,35 @@ public class PhotonVoiceChat : MonoBehaviourPun
                         photonView.RPC("ReceiveVoiceData", RpcTarget.Others, compressed, recordingSampleRate);
                     }
                 }
+                else
+                {
+                    IsSpeaking = false;
+                }
             }
         }
         else
         {
             if (isPlaying && audioSource.isPlaying && playbackClip != null)
             {
+                // Calculate RMS of output audio to detect remote speaking state
+                float[] outputData = new float[128];
+                audioSource.GetOutputData(outputData, 0);
+                float sum = 0f;
+                for (int i = 0; i < outputData.Length; i++)
+                {
+                    sum += outputData[i] * outputData[i];
+                }
+                float rms = Mathf.Sqrt(sum / outputData.Length);
+                if (rms > 0.005f)
+                {
+                    IsSpeaking = true;
+                    lastSpeakingTime = Time.time;
+                }
+                else if (Time.time - lastSpeakingTime > 0.3f)
+                {
+                    IsSpeaking = false;
+                }
+
                 int playPos = audioSource.timeSamples;
                 int senderSampleRate = playbackClip.frequency;
                 int bufferLength = senderSampleRate * CLIP_DURATION;
@@ -145,11 +189,16 @@ public class PhotonVoiceChat : MonoBehaviourPun
                 {
                     audioSource.Pause();
                     isPlaying = false;
+                    IsSpeaking = false;
                 }
                 else if (distance > latencyLimit)
                 {
                     audioSource.timeSamples = (playbackWritePos - playStartThreshold + bufferLength) % bufferLength;
                 }
+            }
+            else
+            {
+                IsSpeaking = false;
             }
         }
     }
@@ -268,27 +317,7 @@ public class PhotonVoiceChat : MonoBehaviourPun
         }
     }
 
-    // Optional: Draw a small GUI overlay on screen for the local player to see their voice chat state
-    void OnGUI()
-    {
-        if (photonView.IsMine)
-        {
-            GUIStyle style = new GUIStyle(GUI.skin.label);
-            style.fontSize = 20;
-            style.fontStyle = FontStyle.Bold;
-            
-            if (isMicEnabled)
-            {
-                GUI.color = Color.green;
-                GUI.Label(new Rect(20, 20, 300, 40), "🎤 Voice Chat: ON (Press R to Mute)", style);
-            }
-            else
-            {
-                GUI.color = Color.red;
-                GUI.Label(new Rect(20, 20, 300, 40), "🔇 Voice Chat: MUTED (Press R to Talk)", style);
-            }
-        }
-    }
+
 
     #region ITU-T G.711 Mu-Law Compression (16-bit to 8-bit)
 

@@ -88,6 +88,14 @@ MonoBehaviour:
   - SyncResetLeversRPC
   - SpawnProjectileRPC
   - SpawnRedLightProjectileRPC
+  - SyncBreakRPC
+  - SyncRepairRPC
+  - LoseGameRPC
+  - OnPillarBrokenRPC
+  - SyncBossEndGameRPC
+  - SyncBossLoseGameRPC
+  - SyncBossPillarBrokenRPC
+  - SyncBossStartGameRPC
   DisableAutoOpenWizard: 1
   ShowSettings: 0
   DevRegionSetOnce: 1

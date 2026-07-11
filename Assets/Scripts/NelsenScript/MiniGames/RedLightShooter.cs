@@ -11,6 +11,7 @@ public class RedLightShooter : MonoBehaviour
     [SerializeField] private string networkProjectilePrefabName = "ThrowableRock";
 
     [Header("Shooting Settings")]
+    [SerializeField] private bool useShootZone = true;
     [SerializeField] private float projectileSpeed = 25f; // Fast speed
     [SerializeField] private float shotsPerSecondPerPlayer = 2f; // 2 shots per second per player (total 4/sec for 2 players)
 
@@ -54,7 +55,17 @@ public class RedLightShooter : MonoBehaviour
             if (player == null || player.IsDead) continue;
 
             // Only shoot players inside the designated shoot zone
-            if (shootZone != null && !shootZone.bounds.Contains(player.transform.position)) continue;
+            if (useShootZone && shootZone != null)
+            {
+                if (!shootZone.bounds.Contains(player.transform.position))
+                {
+                    if (Time.frameCount % 120 == 0) // Log once every 2 seconds to avoid spam
+                    {
+                        Debug.Log($"[RedLightShooter] Skipping {player.name} on {gameObject.name}: Player is outside the shootZone bounds.");
+                    }
+                    continue;
+                }
+            }
 
             // Initialize player cooldown if not tracked
             if (!playerCooldowns.ContainsKey(player))
@@ -69,11 +80,14 @@ public class RedLightShooter : MonoBehaviour
                 Vector3 targetPos = player.transform.position + Vector3.up * 1f; // Target chest/center
                 Vector3 direction = (targetPos - startPos).normalized;
 
-                // Perform a single raycast to get the direction/trajectory towards the player
-                RaycastHit hit;
-                if (Physics.Raycast(startPos, direction, out hit, 100f))
+                // Perform a single raycast to get the direction/trajectory towards the player, ignoring the shooter itself
+                RaycastHit[] hits = Physics.RaycastAll(startPos, direction, 100f);
+                System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+                foreach (var h in hits)
                 {
-                    direction = (hit.point - startPos).normalized;
+                    if (h.transform.IsChildOf(transform.root)) continue;
+                    direction = (h.point - startPos).normalized;
+                    break;
                 }
 
                 // Fire the projectile along the calculated path
@@ -87,17 +101,19 @@ public class RedLightShooter : MonoBehaviour
 
     private void ShootAtPlayer(FirstPersonController player, Vector3 spawnPos, Vector3 direction)
     {
-        Debug.Log($"[RedLightShooter] Shooting projectile at {player.name}!");
+        Debug.Log($"[RedLightShooter] ShootAtPlayer called on {gameObject.name} for player: {player.name}!");
 
         PhotonView pv = GetComponent<PhotonView>();
         if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
             if (pv != null && pv.ViewID > 0)
             {
+                Debug.Log($"[RedLightShooter] Sending RPC SpawnProjectileRPC from {gameObject.name}");
                 pv.RPC("SpawnProjectileRPC", RpcTarget.All, spawnPos, direction);
             }
             else
             {
+                Debug.Log($"[RedLightShooter] No PhotonView, routing through local player: {player.name}");
                 // Route through local player controller
                 FirstPersonController localPlayer = null;
                 var controllers = FindObjectsOfType<FirstPersonController>();
@@ -111,14 +127,26 @@ public class RedLightShooter : MonoBehaviour
                 }
                 if (localPlayer != null)
                 {
-                    localPlayer.RouteRedLightShoot(spawnPos, direction);
+                    localPlayer.RouteRedLightShoot(GetGameObjectPath(gameObject), spawnPos, direction);
                 }
             }
         }
         else
         {
+            Debug.Log($"[RedLightShooter] Offline Mode, spawning locally from {gameObject.name}");
             SpawnProjectileLocal(spawnPos, direction);
         }
+    }
+
+    private string GetGameObjectPath(GameObject obj)
+    {
+        string path = "/" + obj.name;
+        while (obj.transform.parent != null)
+        {
+            obj = obj.transform.parent.gameObject;
+            path = "/" + obj.name + path;
+        }
+        return path;
     }
 
     [PunRPC]
@@ -129,10 +157,27 @@ public class RedLightShooter : MonoBehaviour
 
     public void SpawnProjectileLocal(Vector3 spawnPos, Vector3 direction)
     {
+        Debug.Log($"[RedLightShooter] SpawnProjectileLocal called at {spawnPos} (direction: {direction}) on {gameObject.name}");
         if (projectilePrefab != null)
         {
             Quaternion rotation = Quaternion.LookRotation(direction);
             GameObject proj = Instantiate(projectilePrefab, spawnPos, rotation);
+            Debug.Log($"[RedLightShooter] Projectile instantiated successfully: {proj.name}");
+
+            // Ignore collisions between the projectile and the shooter (Pharaoh + staff)
+            Collider[] shooterColliders = transform.root.GetComponentsInChildren<Collider>();
+            Collider[] projectileColliders = proj.GetComponentsInChildren<Collider>();
+            foreach (var sCol in shooterColliders)
+            {
+                foreach (var pCol in projectileColliders)
+                {
+                    if (sCol != null && pCol != null)
+                    {
+                        Physics.IgnoreCollision(sCol, pCol, true);
+                    }
+                }
+            }
+
             Rigidbody rb = proj.GetComponent<Rigidbody>();
             if (rb != null)
             {

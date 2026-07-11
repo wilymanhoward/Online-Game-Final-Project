@@ -32,6 +32,13 @@ public class SarcophagusEscape : MonoBehaviourPun
     [Tooltip("Assign your own Press E UI here. It will hide after the first press, showing the progress bar.")]
     public GameObject customPressEUI;
 
+    [Header("Audio Options")]
+    [Tooltip("The audio clip to play when hitting the lid. If left empty, will load freesound_community-doorhit-98828 from Resources.")]
+    public AudioClip hitClip;
+
+    [Tooltip("The audio clip to play when the lid lands on the ground. If left empty, will load 0708(1) from Resources.")]
+    public AudioClip groundHitClip;
+
     private int clickCount = 0;
     private FirstPersonController fpc;
     private bool isEscaped = false;
@@ -46,6 +53,16 @@ public class SarcophagusEscape : MonoBehaviourPun
 
     private void Start()
     {
+        if (hitClip == null)
+        {
+            hitClip = Resources.Load<AudioClip>("freesound_community-doorhit-98828");
+        }
+
+        if (groundHitClip == null)
+        {
+            groundHitClip = Resources.Load<AudioClip>("0708(1)");
+        }
+
         // 1. Find the target player (Player1 or Player2)
         if (targetPlayer == null)
         {
@@ -289,6 +306,11 @@ public class SarcophagusEscape : MonoBehaviourPun
         {
             fpc.TriggerCameraShake(0.15f, 0.05f);
         }
+
+        if (hitClip != null)
+        {
+            AudioSource.PlayClipAtPoint(hitClip, transform.position, 1f);
+        }
     }
 
     private void CreateSpamUI()
@@ -465,6 +487,11 @@ public class SarcophagusEscape : MonoBehaviourPun
         sarcophagusLid.transform.rotation = targetRot;
 
         if (col != null) col.enabled = true;
+
+        if (groundHitClip != null)
+        {
+            AudioSource.PlayClipAtPoint(groundHitClip, targetPos, 1f);
+        }
     }
 
     private float EaseOutBounce(float x)

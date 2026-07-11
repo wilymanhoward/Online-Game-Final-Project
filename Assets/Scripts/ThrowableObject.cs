@@ -19,16 +19,25 @@ public class ThrowableObject : MonoBehaviourPun
     void Start()
     {
         // Only the master client or spawning client should control the lifetime and network destruction
-        if (PhotonNetwork.IsConnected)
+        if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
         {
             if (photonView.IsMine)
             {
-                Destroy(gameObject, lifetime);
+                StartCoroutine(DestroyAfterLifetime());
             }
         }
         else
         {
             Destroy(gameObject, lifetime);
+        }
+    }
+
+    private System.Collections.IEnumerator DestroyAfterLifetime()
+    {
+        yield return new WaitForSeconds(lifetime);
+        if (photonView != null && photonView.IsMine)
+        {
+            PhotonNetwork.Destroy(gameObject);
         }
     }
 

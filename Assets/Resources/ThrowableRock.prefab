@@ -5005,7 +5005,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6dd9df1566008d34ba27a547a68b23ae, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  lifetime: 5
+  lifetime: 1
   bounceForce: 0.5
 --- !u!1001 &2147905658656902486
 PrefabInstance:

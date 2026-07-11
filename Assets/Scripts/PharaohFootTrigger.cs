@@ -3,11 +3,17 @@ using UnityEngine;
 public class PharaohFootTrigger : MonoBehaviour
 {
     [HideInInspector]
-    public GiantPharaohAI pharaohAI;
+    public EnemyStateMachineController stateMachineController;
 
-    void OnTriggerEnter(Collider other)
+    private void OnTriggerEnter(Collider other)
     {
-        if (pharaohAI == null || !pharaohAI.IsStompingActive()) return;
+        // Self-heal reference if null
+        if (stateMachineController == null)
+        {
+            stateMachineController = GetComponentInParent<EnemyStateMachineController>();
+        }
+
+        if (stateMachineController == null || !stateMachineController.IsStompingActive()) return;
 
         FirstPersonController player = other.GetComponent<FirstPersonController>();
         if (player != null)
@@ -16,7 +22,7 @@ public class PharaohFootTrigger : MonoBehaviour
         }
     }
 
-    void OnTriggerStay(Collider other)
+    private void OnTriggerStay(Collider other)
     {
         OnTriggerEnter(other);
     }
